@@ -30,6 +30,8 @@ from flask import Flask, jsonify, request
 
 import audit
 import config
+import detector
+import stylometry
 
 app = Flask(__name__)
 
@@ -199,17 +201,59 @@ def submit():
     what should this do when `text` is missing, empty, or enormous? A crash on
     a malformed input is one of the most common real failures there is.
     """
-    payload = request.get_json(silent=True) or {}
+    # Bad input never reaches a signal, and never gets a content_id.
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({
+            "error": "invalid_json",
+            "message": "The request body must be JSON.",
+        }), 400
 
-    # TODO: delete this and build the route.
+    text = payload.get("text")
+    creator_id = payload.get("creator_id")
+    if not isinstance(text, str) or not isinstance(creator_id, str):
+        return jsonify({
+            "error": "missing_field",
+            "message": "Both text and creator_id are required.",
+        }), 422
+    if not text.strip():
+        return jsonify({
+            "error": "empty_text",
+            "message": "The text is empty.",
+        }), 400
+    if len(stylometry.words(text)) > config.MAX_WORDS:
+        return jsonify({
+            "error": "text_too_long",
+            "message": f"The text is too long to score. Please send at most {config.MAX_WORDS} words.",
+        }), 413
+
+    # Signal one. Under 3 tokens it raises ValueError: too little to score.
+    try:
+        model_score = detector.model_signal(text)
+    except ValueError:
+        return jsonify({
+            "error": "text_too_short",
+            "message": "The text is too short to score. Please send at least a few sentences.",
+        }), 400
+
+    # Only real decisions get an id. M4 moves this below the combined score.
+    content_id = str(uuid.uuid4())
+
+    audit.log_decision(
+        content_id=content_id,
+        creator_id=creator_id,
+        model_score=model_score,
+    )
+
+    # style_score and confidence arrive in M4; guess and label in M5.
     return jsonify({
-        "error": "not_implemented",
-        "message": "POST /submit isn't built yet — see the TODO in app.py.",
-        "you_sent": {
-            "text_length": len(payload.get("text", "")),
-            "creator_id": payload.get("creator_id"),
-        },
-    }), 501
+        "content_id": content_id,
+        "guess": None,
+        "confidence": None,
+        "label": None,
+        "model_score": model_score,
+        "style_score": None,
+    })
 
 
 @app.post("/appeal")

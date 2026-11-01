@@ -46,6 +46,11 @@ DETECTOR_MODEL = os.getenv("AI201_DETECTOR_MODEL", "gpt2")
 # 300 words, which is enough for the signal to mean something.
 DETECTOR_MAX_TOKENS = 400
 
+# The longest text /submit accepts, in words (counted with stylometry.words).
+# Anything longer gets a 413. Only the first DETECTOR_MAX_TOKENS (~300 words)
+# are scored anyway, so this leaves a margin and refuses the rest.
+MAX_WORDS = 350
+
 
 # ─── Scoring (Milestone 4) ───────────────────────────────────────────────────
 # How much each signal counts toward the combined score.
