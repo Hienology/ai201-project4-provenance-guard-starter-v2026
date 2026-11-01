@@ -159,9 +159,9 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I gave the coding agent my rough notes on the path a submission takes (two drafts, plus my answers to its questions about the gaps) and asked it to assemble them into one ordered path for Milestone 1.
+- *What came back:* A nine-step path, from reading the JSON body to returning the response. The one point I had not decided, what happens when a text passes validation but is too short for signal one, was marked as open instead of filled in.
+- *What I changed:* The agent had dropped two of my claims that the code does not support: that submitted text is stored in the log, and that "the text was added". I checked `audit.py`, whose nine log fields contain no text, and agreed. I answered the open point myself: no `content_id` is created, and the service returns an error saying the text is too short to score.
 
 **Moment 2**
 
