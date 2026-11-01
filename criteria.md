@@ -44,11 +44,9 @@ Two things worth knowing before you pick numbers:
 ---
 ## 1.
 
-<!-- Your criterion. It must name a number. -->
+**Score spread.** Inputs: 5 AI texts and 5 texts I wrote myself, saved in `samples/`. Action: submit each one to `POST /submit`. Read: `model_score` from each response. Pass if: the average `model_score` of the 5 AI texts minus the average `model_score` of my 5 texts is at least 0.3, in all three trials.
 
-
-
-**Why this target:**
+**Why this target:** I want to catch the most obvious case.
 
 
 
@@ -56,11 +54,9 @@ Two things worth knowing before you pick numbers:
 
 ## 2.
 
-<!-- Your criterion. -->
+**False positives.** Inputs: my 5 own texts in `samples/` (the same ones as criterion 1). Action: submit each one to `POST /submit`. Read: `guess` from each response; a text counts as flagged when `guess` is `ai` or `unsure`. Pass if: at most 2 of the 5 are flagged, in all three trials.
 
-
-
-**Why this target:**
+**Why this target:** I'm not very confident, given how good prompt engineering can get. AI can be made to look human, so the service can't be sure and should say "unsure" often. Since I count "unsure" as flagged, some of my honest texts will be flagged, so I accept up to 2 of 5.
 
 
 
@@ -68,11 +64,9 @@ Two things worth knowing before you pick numbers:
 
 ## 3.
 
-<!-- Your criterion. -->
+**Bad input.** Inputs: five bad requests, saved as ready-to-run curl commands in `samples/`: not JSON, missing `text` or `creator_id`, empty text, too short, and over 350 words. Action: send each one to `POST /submit`. Read: the status code and the `error` field of each response; the expected pairs are 400 `invalid_json`, 422 `missing_field`, 400 `empty_text`, 400 `text_too_short` and 413 `text_too_long`. Pass if: at least 4 of the 5 return their expected code and `error`, in all three trials.
 
-
-
-**Why this target:**
+**Why this target:** It shows it can detect the proper case, especially with those sharing code 400, and because signal one doesn't have enough material to make calculations and comparisons on very short text.
 
 
 
@@ -80,11 +74,9 @@ Two things worth knowing before you pick numbers:
 
 ## 4.
 
-<!-- Your criterion. -->
+**The appeal path.** Inputs: one of my texts in `samples/`, submitted fresh in each trial, plus one made-up `content_id`. Action: submit the text to `POST /submit` and keep the returned `content_id`; appeal it with `POST /appeal`; appeal the same id a second time; then appeal the made-up id. Read: five checks. (1) The first appeal returns 200. (2) Its response has `status: "under_review"`. (3) `GET /log` shows an appeal entry with the same `content_id`, on a later line than the original decision. (4) The second appeal returns 409 `already_appealed`. (5) The made-up id returns 404 `unknown_content_id`. Pass if: all 5 of the 5 checks pass, in all three trials.
 
-
-
-**Why this target:**
+**Why this target:** The right to appeal must be guaranteed properly. Any first appeal in a valid format should go forward, not mentioning the fate.
 
 
 
@@ -92,11 +84,9 @@ Two things worth knowing before you pick numbers:
 
 ## 5.
 
-<!-- Your criterion. -->
+**Label coverage.** Inputs: the same 10 texts as criteria 1 and 2 (5 AI texts and my 5 own texts in `samples/`). Action: submit each one to `POST /submit`. Read: `guess` from each response. Pass if: at least 3 of the 5 AI texts get `ai`, at least 1 of the 10 texts gets `unsure`, and at least 2 of the 10 get `human`, in all three trials.
 
-
-
-**Why this target:**
+**Why this target:** I want more AI-generated test cases to be detected; given GPT-2's limits, I can expect detecting AI text can be easier.
 
 
 
