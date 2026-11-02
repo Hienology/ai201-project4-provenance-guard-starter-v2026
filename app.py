@@ -31,6 +31,7 @@ from flask import Flask, jsonify, request
 import audit
 import config
 import detector
+import scoring
 import stylometry
 
 app = Flask(__name__)
@@ -216,12 +217,21 @@ def submit():
             "error": "missing_field",
             "message": "Both text and creator_id are required.",
         }), 422
-    if not text.strip():
+    # Leading/trailing whitespace moves signal one's score, so it never gets scored.
+    text = text.strip()
+    if not text:
         return jsonify({
             "error": "empty_text",
             "message": "The text is empty.",
         }), 400
-    if len(stylometry.words(text)) > config.MAX_WORDS:
+    # Punctuation-only text passes signal one but gives signal two nothing to count.
+    n_words = len(stylometry.words(text))
+    if n_words == 0:
+        return jsonify({
+            "error": "no_words",
+            "message": "The text has no words to score.",
+        }), 400
+    if n_words > config.MAX_WORDS:
         return jsonify({
             "error": "text_too_long",
             "message": f"The text is too long to score. Please send at most {config.MAX_WORDS} words.",
@@ -236,23 +246,29 @@ def submit():
             "message": "The text is too short to score. Please send at least a few sentences.",
         }), 400
 
-    # Only real decisions get an id. M4 moves this below the combined score.
+    # Signal two. It can't raise here: no-word text was rejected above.
+    style_score = stylometry.style_signal(text)
+    combined_score = scoring.combine_signals(model_score, style_score)
+
+    # Only real decisions get an id: after the combined score, before the label.
     content_id = str(uuid.uuid4())
 
     audit.log_decision(
         content_id=content_id,
         creator_id=creator_id,
         model_score=model_score,
+        style_score=style_score,
+        combined_score=combined_score,
     )
 
-    # style_score and confidence arrive in M4; guess and label in M5.
+    # confidence = combined_score (AI-likelihood, M1 contract). guess and label in M5.
     return jsonify({
         "content_id": content_id,
         "guess": None,
-        "confidence": None,
+        "confidence": combined_score,
         "label": None,
         "model_score": model_score,
-        "style_score": None,
+        "style_score": style_score,
     })
 
 

@@ -58,9 +58,15 @@ MAX_WORDS = 350
 # ⚠️ These are placeholders. Milestone 4 asks you to write your combining rule
 # down BEFORE you code it, and to put the numbers in your README. Whatever you
 # decide, it goes here.
+#
+# The rule (M4, scoring.py::combine_signals): if one signal is above SPLIT_POINT
+# and the other below it, they disagree and the combined score is SPLIT_POINT
+# (unsure). Otherwise it is the weighted average below. Equal weights: neither
+# signal is more trustworthy than the other.
 
 WEIGHT_MODEL_SIGNAL = 0.5
 WEIGHT_STYLE_SIGNAL = 0.5
+SPLIT_POINT = 0.5
 
 
 # ─── Thresholds (Milestone 5) ────────────────────────────────────────────────

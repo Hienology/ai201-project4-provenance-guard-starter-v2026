@@ -45,6 +45,19 @@ def words(text: str) -> list[str]:
     return re.findall(r"[a-z0-9']+", text.lower())
 
 
+# ── The student's M4 decisions ───────────────────────────────────────────────
+# Each measure is scaled to 0-1, higher = more AI-like: a straight line between
+# the two ends, clipped outside them.
+
+WINDOW = 60                          # words per window for type_token_ratio
+SPREAD_HUMAN = 0.6                   # spread at or above this → 0.0
+SPREAD_AI = 0.3                      # spread at or below this → 1.0
+RATIO_AI = 0.81                      # ratio at or above this → 1.0
+RATIO_HUMAN = RATIO_AI - 5 / WINDOW  # 5 words per window from 0.0 to 1.0 (≈ 0.7267)
+WEIGHT_SPREAD = 0.35
+WEIGHT_RATIO = 0.65
+
+
 # ── The three measures — YOU BUILD THESE ─────────────────────────────────────
 
 def sentence_length_spread(text: str) -> float:
@@ -63,9 +76,14 @@ def sentence_length_spread(text: str) -> float:
     Watch the edge case: a one-sentence submission has no spread at all, and
     `stdev` raises on fewer than two values. Decide what that should return
     before the attack set decides for you.
+
+    Built (M4): stdev ÷ mean of words per sentence. High spread = human-like.
+    Fewer than two sentences returns 0.0; `style_signal` treats that as neutral.
     """
-    # TODO: replace this
-    return 0.0
+    lengths = [len(words(s)) for s in sentences(text)]
+    if len(lengths) < 2 or statistics.mean(lengths) == 0:
+        return 0.0
+    return statistics.stdev(lengths) / statistics.mean(lengths)
 
 
 def type_token_ratio(text: str) -> float:
@@ -79,9 +97,19 @@ def type_token_ratio(text: str) -> float:
     longer, because common words repeat. Two texts of different lengths aren't
     directly comparable on it, and if your test inputs vary a lot in length,
     that alone can look like a signal.
+
+    Built (M4) as a sliding window: the ratio of every WINDOW-word stretch
+    (words 1-60, 2-61, ...), averaged, so texts are compared at equal length.
+    WINDOW words or fewer: the ratio over all of them. High ratio = AI-like
+    (the student's texts repeat more than the AI samples).
     """
-    # TODO: replace this
-    return 0.0
+    w = words(text)
+    if not w:
+        return 0.0
+    if len(w) <= WINDOW:
+        return len(set(w)) / len(w)
+    windows = [w[i:i + WINDOW] for i in range(len(w) - WINDOW + 1)]
+    return sum(len(set(win)) / WINDOW for win in windows) / len(windows)
 
 
 def punctuation_density(text: str) -> float:
@@ -93,8 +121,9 @@ def punctuation_density(text: str) -> float:
         semicolons, dashes — is a real choice. Semicolons and em dashes are
         more interesting than full stops, because they vary more between
         writers.
+
+    Not used: the student skipped this measure in M4.
     """
-    # TODO: replace this
     return 0.0
 
 
@@ -121,9 +150,23 @@ def style_signal(text: str) -> float:
     clearly human, plain conventional human writing, lightly-edited AI — before
     you trust it. Plain and ordinary, not formal: formal prose reads as *human*
     to signal one, and it is plain writing that gets accused.
+
+    Built (M4): WEIGHT_SPREAD × spread piece + WEIGHT_RATIO × ratio piece.
+    No words raises ValueError (the route rejects that first, with no_words).
+    One sentence returns 0.5, so signal one decides.
     """
-    # TODO: replace this
-    return 0.5
+    if not words(text):
+        raise ValueError("No words to score.")
+    if len(sentences(text)) < 2:
+        return 0.5
+    spread = _scale(sentence_length_spread(text), SPREAD_HUMAN, SPREAD_AI)
+    ratio = _scale(type_token_ratio(text), RATIO_HUMAN, RATIO_AI)
+    return round(WEIGHT_SPREAD * spread + WEIGHT_RATIO * ratio, 4)
+
+
+def _scale(value: float, zero_at: float, one_at: float) -> float:
+    """Straight line from zero_at (→ 0.0) to one_at (→ 1.0), clipped to 0-1."""
+    return min(1.0, max(0.0, (value - zero_at) / (one_at - zero_at)))
 
 
 if __name__ == "__main__":
@@ -139,4 +182,3 @@ if __name__ == "__main__":
     print(f"type_token_ratio         {type_token_ratio(text)}")
     print(f"punctuation_density      {punctuation_density(text)}")
     print(f"style_signal             {style_signal(text)}   (higher = more likely AI)")
-    print("\nAll zeros? These are stubs — Milestone 4 is where you build them.")
