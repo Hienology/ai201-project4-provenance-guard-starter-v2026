@@ -283,7 +283,7 @@ $ curl -s "http://127.0.0.1:5000/log?limit=3"
 
 ## Rate Limiting
 
-**My limits:** ___ per minute, ___ per day
+**My limits:** 12 per minute, 1000 per day (`config.py`: `RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_PER_DAY`; both apply, whichever is reached first blocks)
 
 **Why those numbers and not others:**
 <!-- Think about two people: a real writer submitting their own work a few
@@ -291,16 +291,23 @@ $ curl -s "http://127.0.0.1:5000/log?limit=3"
      thresholds. Your numbers have to be liveable for the first and hostile to
      the second. -->
 
+- 12 a minute: a writer "changing a character and/or adding, deleting a few takes 5 seconds at least to do those stuff and press the submit button", and 60 seconds ÷ 5 seconds = 12.
+- 1000 a day: "to be generous".
+- *(Limits from my own tools, found by the coding agent:)* the minute limit can't be below 9, because `run_eval.py` sends criterion 3's three `test-writer-1` requests in each of three back-to-back trials, and it must be 14 or less for the 15-request flood test to show a 429. A daily number of 12 × 60 × 24 = 17,280 would never block anything the minute limit doesn't already block.
+
 **What a caller counts as:** <!-- per address, or per creator_id? They fail
 differently — one script can look like a thousand callers, and one household
 can look like one. -->
+*(the coding agent's description of the code)* the `creator_id` in the body when it is a non-empty string, otherwise the caller's address (the starter's `app.py::rate_limit_key`). The caller types its own `creator_id`, so a script that changes it on every request is not slowed by either limit; every request without a usable `creator_id` shares one count. Counts are kept in memory, so a restart sets them to zero.
 
 **The run of status codes when I pushed past it:**
 
 <!-- python run_attacks.py --flood 15 -->
 
-```
+`python run_attacks.py --flood 15`, 2026-11-08 02:08 (`results/flood_2026-11-08_0208.md`): 15 submissions as `flood_tester`, the 13th to 15th refused, each logged as `rejected`, reason `rate_limited`.
 
+```
+200 200 200 200 200 200 200 200 200 200 200 200 429 429 429
 ```
 
 ---
@@ -310,20 +317,100 @@ can look like one. -->
 <!-- Every attack with its outcome and a held-or-broke mark.
      `run_attacks.py --label before` produces the table. -->
 
+`python run_attacks.py --set attack_set/attack_set --label before`, 2026-11-08 02:32, against the service with rate limiting on (full output: `results/attack_run_2026-11-08_0232_before.md`; the run's log: `results/audit_extract.json`). 56 attacks, no crash and no 5xx. Signal scores come from the audit log, matched by `content_id`.
 
+**Held 52, broke 4** (FP03, FP04, MF03, MF05). My rule for each family *(the coding agent applied it to every row)*:
+
+| Family | Held when | Held | Broke |
+|---|---|---|---|
+| evasion (AI text in disguise) | it did not get `human` | 10 | 0 |
+| false_positive (real human writing) | it did not get `ai`; `unsure` is fine | 6 | 2 |
+| prompt_injection | the instruction did not get what it asked for ("the preventions worked") | 6 | 0 |
+| malformed | it was refused, or scored without a confident label | 18 | 2 |
+| flood_same_creator | ("confidently held") | 12 | 0 |
+
+| ID | Family | Targeting | Status | Guess | Combined | Signal one | Signal two | Mark |
+|---|---|---|---|---|---|---|---|---|
+| EV01 | evasion | signal two: typos raise word variety | 200 | unsure | 0.500 | 0.1635 | 1.0 | HELD |
+| EV02 | evasion | signal two: broken-up sentences raise length spread | 200 | unsure | 0.622 | 0.5943 | 0.65 | HELD |
+| EV03 | evasion | signal two: a pasted quotation changes the shape | 200 | ai | 0.749 | 0.6662 | 0.8327 | HELD |
+| EV04 | evasion | signal one: unusual words raise perplexity | 200 | ai | 0.806 | 0.6114 | 1.0 | HELD |
+| EV05 | evasion | both signals: heavy human editing pass | 200 | unsure | 0.500 | 0.3212 | 0.65 | HELD |
+| EV06 | evasion | signal two: one very long sentence and one very short | 200 | unsure | 0.562 | 0.5727 | 0.5523 | HELD |
+| EV07 | evasion | signal two: padding with punctuation | 200 | unsure | 0.543 | 0.5862 | 0.5 | HELD |
+| EV08 | evasion | signal one: text below the token window | 200 | unsure | 0.500 | 0.2452 | 1.0 | HELD |
+| EV09 | evasion | both: AI text with a human opening paragraph bolted on | 200 | ai | 0.754 | 0.7042 | 0.8045 | HELD |
+| EV10 | evasion | signal two: repeated stanza structure | 200 | unsure | 0.500 | 0.9792 | 0.2404 | HELD |
+| FP01 | false_positive | plain, clear human writing with no flourishes | 200 | unsure | 0.614 | 0.6175 | 0.6112 | HELD |
+| FP02 | false_positive | human writing in a formal register | 200 | unsure | 0.620 | 0.7387 | 0.5014 | HELD |
+| FP03 | false_positive | a non-native English speaker writing carefully | 200 | ai | 0.777 | 0.8051 | 0.7483 | **BROKE** |
+| FP04 | false_positive | a student essay written to a rubric | 200 | ai | 0.802 | 0.8329 | 0.772 | **BROKE** |
+| FP05 | false_positive | technical documentation written by a person | 200 | unsure | 0.500 | 0.8005 | 0.35 | HELD |
+| FP06 | false_positive | a person imitating a formal template | 200 | unsure | 0.500 | 0.8814 | 0.1463 | HELD |
+| FP07 | false_positive | human writing that repeats a phrase deliberately | 200 | unsure | 0.500 | 0.8816 | 0.0 | HELD |
+| FP08 | false_positive | very short genuine human submission | 200 | unsure | 0.500 | 0.3223 | 0.8448 | HELD |
+| PI01 | prompt_injection | instruction to ignore the check | 200 | unsure | 0.500 | 0.4625 | 0.65 | HELD |
+| PI02 | prompt_injection | instruction disguised as a system message | 200 | unsure | 0.500 | 0.2044 | 0.65 | HELD |
+| PI03 | prompt_injection | instruction wrapped in the writer's voice | 200 | ai | 0.772 | 0.5943 | 0.9498 | HELD |
+| PI04 | prompt_injection | attempt to make the label text hostile | 200 | unsure | 0.500 | 0.4998 | 0.8872 | HELD |
+| PI05 | prompt_injection | attempt to inject into the audit log | 200 | ai | 0.720 | 0.6401 | 0.8 | HELD |
+| PI06 | prompt_injection | instruction plus real human text | 200 | unsure | 0.629 | 0.5583 | 0.6994 | HELD |
+| MF01 | malformed | text is only whitespace | 400 | — (refused) | — | — | — | HELD |
+| MF02 | malformed | text is a single character | 400 | — (refused) | — | — | — | HELD |
+| MF03 | malformed | text is control characters | 200 | human | 0.250 | 0.0 | 0.5 | **BROKE** |
+| MF04 | malformed | text is only punctuation | 400 | — (refused) | — | — | — | HELD |
+| MF05 | malformed | text is a very long single word | 200 | ai | 0.749 | 0.9976 | 0.5 | **BROKE** |
+| MF06 | malformed | text is emoji only | 400 | — (refused) | — | — | — | HELD |
+| MF07 | malformed | text is right-to-left script | 400 | — (refused) | — | — | — | HELD |
+| MF08 | malformed | text is 60,000 characters | 413 | — (refused) | — | — | — | HELD |
+| RQ01 | malformed | no text field at all | 422 | — (refused) | — | — | — | HELD |
+| RQ02 | malformed | no creator_id | 422 | — (refused) | — | — | — | HELD |
+| RQ03 | malformed | text is a number | 422 | — (refused) | — | — | — | HELD |
+| RQ04 | malformed | text is a list | 422 | — (refused) | — | — | — | HELD |
+| RQ05 | malformed | text is null | 422 | — (refused) | — | — | — | HELD |
+| RQ06 | malformed | creator_id is an object | 422 | — (refused) | — | — | — | HELD |
+| RQ07 | malformed | body is a JSON array, not an object | 400 | — (refused) | — | — | — | HELD |
+| RQ08 | malformed | body is unparseable JSON | 400 | — (refused) | — | — | — | HELD |
+| RQ09 | malformed | body is empty | 400 | — (refused) | — | — | — | HELD |
+| RQ10 | malformed | body is form-encoded, not JSON | 400 | — (refused) | — | — | — | HELD |
+| RQ11 | malformed | body is JSON claiming to be plain text | 400 | — (refused) | — | — | — | HELD |
+| RQ12 | malformed | deeply nested JSON | 422 | — (refused) | — | — | — | HELD |
+| FL01_01 | flood_same_creator | 20 rapid submissions from one creator | 200 | human | 0.264 | 0.0287 | 0.5 | HELD |
+| FL01_02 | flood_same_creator | 20 rapid submissions from one creator | 200 | human | 0.264 | 0.0287 | 0.5 | HELD |
+| FL01_03 | flood_same_creator | 20 rapid submissions from one creator | 200 | human | 0.264 | 0.0287 | 0.5 | HELD |
+| FL01_04 | flood_same_creator | 20 rapid submissions from one creator | 200 | human | 0.264 | 0.0287 | 0.5 | HELD |
+| FL01_05 | flood_same_creator | 20 rapid submissions from one creator | 200 | human | 0.264 | 0.0287 | 0.5 | HELD |
+| FL01_06 | flood_same_creator | 20 rapid submissions from one creator | 200 | human | 0.264 | 0.0287 | 0.5 | HELD |
+| FL01_07 | flood_same_creator | 20 rapid submissions from one creator | 200 | human | 0.264 | 0.0287 | 0.5 | HELD |
+| FL01_08 | flood_same_creator | 20 rapid submissions from one creator | 200 | human | 0.264 | 0.0287 | 0.5 | HELD |
+| FL01_09 | flood_same_creator | 20 rapid submissions from one creator | 200 | human | 0.264 | 0.0287 | 0.5 | HELD |
+| FL01_10 | flood_same_creator | 20 rapid submissions from one creator | 200 | human | 0.264 | 0.0287 | 0.5 | HELD |
+| FL01_11 | flood_same_creator | 20 rapid submissions from one creator | 200 | human | 0.264 | 0.0287 | 0.5 | HELD |
+| FL01_12 | flood_same_creator | 20 rapid submissions from one creator | 200 | human | 0.264 | 0.0287 | 0.5 | HELD |
 
 **Ten audit log entries from the run**
 
 <!-- Choose entries that show the interesting failures, not the ten easiest. -->
 
-```json
+Exact lines from `logs/audit.jsonl`, in this order: **FP03, FP04, MF03** (the three broke entries I picked), then seven held refusals picked at random by the coding agent at my request: **MF02, MF06, RQ03, RQ04, RQ08, RQ09, RQ11**. RQ08, RQ09 and RQ11 send no readable JSON, so their `creator_id` is `unknown`; they are matched to their attacks by order (RQ07 to RQ11 were sent one after another and logged in that order).
 
+```json
+{"timestamp": "2026-11-08T07:32:10+00:00", "content_id": "c3021566-897b-46fe-8514-94e881647310", "creator_id": "attacker_FP03", "guess": "ai", "model_score": 0.8051, "style_score": 0.7483, "combined_score": 0.7767, "label": "This is starting to be similar to AI text.", "status": "decided"}
+{"timestamp": "2026-11-08T07:32:10+00:00", "content_id": "68869adb-8517-472f-9c5d-57fe9d81ef78", "creator_id": "attacker_FP04", "guess": "ai", "model_score": 0.8329, "style_score": 0.772, "combined_score": 0.8024, "label": "This is starting to be similar to AI text.", "status": "decided"}
+{"timestamp": "2026-11-08T07:32:11+00:00", "content_id": "5bb9d97f-340e-47b1-819b-0c5a5bba2aac", "creator_id": "attacker_MF03", "guess": "human", "model_score": 0.0, "style_score": 0.5, "combined_score": 0.25, "label": "This looks similar to human text.", "status": "decided"}
+{"timestamp": "2026-11-08T07:32:11+00:00", "content_id": null, "creator_id": "attacker_MF02", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "text_too_short", "http_status": 400}
+{"timestamp": "2026-11-08T07:32:11+00:00", "content_id": null, "creator_id": "attacker_MF06", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "no_words", "http_status": 400}
+{"timestamp": "2026-11-08T07:32:11+00:00", "content_id": null, "creator_id": "attacker_RQ03", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "missing_field", "http_status": 422}
+{"timestamp": "2026-11-08T07:32:11+00:00", "content_id": null, "creator_id": "attacker_RQ04", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "missing_field", "http_status": 422}
+{"timestamp": "2026-11-08T07:32:11+00:00", "content_id": null, "creator_id": "unknown", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "invalid_json", "http_status": 400}
+{"timestamp": "2026-11-08T07:32:11+00:00", "content_id": null, "creator_id": "unknown", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "invalid_json", "http_status": 400}
+{"timestamp": "2026-11-08T07:32:11+00:00", "content_id": null, "creator_id": "unknown", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "invalid_json", "http_status": 400}
 ```
 
 **The single worst outcome** — the one I'd least want to explain to a writer
 whose work got caught by it:
 
-
+**MF03**, control characters around the word "test", scored `human` (combined 0.250: signal one 0.0, signal two 0.5 because it is one sentence) and got "This looks similar to human text." Why it is the worst: "such techniques are not normally done by normal writers".
 
 ---
 
