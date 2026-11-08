@@ -112,7 +112,14 @@ def log_rejection(creator_id: str, reason: str, **extra) -> dict:
     })
 
 
+# Unit 8: every entry carries all nine fields. Appeals and rejections have no
+# decision of their own, so theirs are empty (null) rather than missing.
+FIELDS = ("timestamp", "content_id", "creator_id", "guess", "model_score",
+          "style_score", "combined_score", "label", "status")
+
+
 def _append(entry: dict) -> dict:
+    entry = {**dict.fromkeys(FIELDS), **entry}
     config.LOG_DIR.mkdir(parents=True, exist_ok=True)
     line = json.dumps(entry, ensure_ascii=False)
     with _lock:

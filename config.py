@@ -114,10 +114,14 @@ MIDDLE_BAND = 0.1
 # an hour, and a script sending a thousand variations to map your thresholds.
 # Your README has to say why your numbers and not others.
 
-RATE_LIMITING_ENABLED = os.getenv("AI201_RATE_LIMITS", "0") == "1"
+RATE_LIMITING_ENABLED = True
 
-RATE_LIMIT_PER_MINUTE = 10
-RATE_LIMIT_PER_DAY = 200
+# Student (unit 8, M1): 12 a minute, 1000 a day ("to be generous"). Both apply
+# per caller and whichever is reached first blocks. Floor and ceiling from the
+# tools: run_eval.py's criterion 3 sends 9 from one creator_id in a few seconds
+# (so at least 9), and the 15-request flood test needs 14 or less.
+RATE_LIMIT_PER_MINUTE = 12
+RATE_LIMIT_PER_DAY = 1000
 
 # Flask-Limiter warns loudly without this. In-memory is right for one laptop
 # and wrong for anything real — a restart forgets every count, and two copies
