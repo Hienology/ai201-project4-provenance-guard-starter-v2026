@@ -39,7 +39,23 @@
 <!-- The path a submission takes, from arriving to the label a reader sees.
      Six or seven steps — this is the trace you wrote in Milestone 1. -->
 
+A backend a writing site could plug into: text comes in at `POST /submit`, two separate signals score it, and the writer gets back a guess, a score, a sentence they can read, and a `content_id` they can appeal with at `POST /appeal`. Every decision, appeal and refused request is written to `logs/audit.jsonl`.
 
+> **Finished at the start of Unit 8, before any Unit 8 run:** the three labels, `/appeal`, the thresholds in `config.py`, `guess` and `label` in the response and the log, and logging of refused requests. My Unit 7 submission did not have them yet.
+
+The path (my Milestone 1 trace, `notes/m1-trace.md`; the parts marked *Unit 8* were added then):
+
+1. A POST request arrives at `/submit` and the JSON body is read → adds `text` and `creator_id`. *Unit 8: the rate limiter counts it first, per `creator_id`; over 12 a minute or 1000 a day → 429, logged as `rate_limited`.*
+2. Check it (validation) → adds a request that is safe to score. If it fails: a short error (400 / 413 / 422) and no `content_id`. *Unit 8: the refusal is logged as `rejected`.*
+3. Signal one: pass the text to the model (`detector.model_signal(text)`) → adds `model_score`, from 0 to 1. If it fails after validation passed (fewer than 3 tokens): no id, and the error says the text is too short to score.
+4. Signal two: stylometry on the same text (`stylometry.style_signal(text)`) → adds `style_score`, from 0 to 1.
+5. Combine both scores (`scoring.combine_signals(...)`) → adds the third number, the combined score, sent as `confidence` (0 = human-like, 1 = AI-like).
+6. Create the `content_id`, only now, so only real decisions get ids → adds `content_id`.
+7. Turn the combined score into words (`scoring.score_to_label(...)`) → adds `guess` (`ai`, `human` or `unsure`) and `label`, the sentence the writer reads.
+8. Write one log entry (`audit.log_decision(...)`), before the response, because code after `return` never runs → one line in `logs/audit.jsonl` with all nine fields; `status` is `decided`. The text itself is not stored.
+9. Return the response → the writer gets `content_id`, `guess`, `confidence`, `label`, `model_score`, `style_score`.
+
+An appeal (`POST /appeal` with the `content_id` and the writer's reasoning) adds a new log line after the decision with `status: under_review`. It does not change the score or the label, re-check the work, or notify anyone.
 
 ---
 
@@ -53,35 +69,45 @@
 
 ### Signal one — the model signal
 
-**What it measures:**
+**What it measures:** which word comes and how expected it is, meaning the surprise is low or high (expected or not). The average surprise of all those words is the perplexity. The one doing the expecting is a model (GPT-2). Low surprise, aka expected/predictable, is guessable as AI: a low overall average means more likely AI. Higher perplexity → human-ish → low score; lower perplexity → low overall average → more likely AI → high score.
 
-**Why that might differ between human and AI writing:**
+In the code (`detector.py::model_signal`): score = 1 / (1 + (perplexity / 45) ^ 1.6), so perplexity 45 scores 0.5. The starter's midpoint (45) and steepness (1.6) are unchanged.
 
-**What it can't see:**
+**Why that might differ between human and AI writing:** AI writing may follow patterns in its choice of words, and in the overall way multiple sentences are linked inside a body of text.
+
+**What it can't see:** the writer's context, meaning who the writer is and why they write like that. A highly structured, repetitive way of writing sentences can lead to mistaken identification as AI, e.g. a news summary: highly direct and concise, written by a human. Why GPT-2 finds its words easy to guess: formulaic, concise, less variations in emotional words. It is also a style an AI could easily write with a prompt: you want a "daily news" summarizer with all those criteria for correctness, conciseness, directness, easy to understand, etc. AI news summaries are based on official human works: back then it was real human-written text, but right now, who knows.
 
 ### Signal two — the style signal
 
-**What it measures:**
+**What it measures:** two of the starter's three measures (I skipped punctuation density), each scaled to 0–1 with higher = more AI-like *(this list was assembled by the coding agent from my Milestone 4 decisions)*:
 
-**Why that might differ between human and AI writing:**
+- **Sentence-length spread** (standard deviation ÷ mean of the words per sentence): spread ≤ 0.3 → 1.0, spread ≥ 0.6 → 0.0, a straight line between. Sentences that march in step read as AI.
+- **Unique-word ratio**, averaged over every 60-word window ("sliding 60"): ratio ≤ 0.7267 → 0.0, ratio ≥ 0.81 → 1.0, a straight line between; 0.7267 is 0.81 − 5/60, so "5 words to flip" per window.
+- Joined as 0.35 × spread part + 0.65 × ratio part (`stylometry.py::style_signal`). A one-sentence text scores 0.5 (neutral), so signal one decides.
 
-**What it can't see:**
+**Why that might differ between human and AI writing:** AI writing may follow patterns in its sentence structures and their length.
+
+*On word variety (the coding agent's summary of what my texts showed):* my first guess was "high score for human, low score for AI". My own emails contradicted it: they repeat words more than the AI samples, even at equal length (average ratio: AI 0.713, mine 0.689), so I flipped it, and a higher ratio now counts as more AI-like. All five AI samples were written by one model, so the flip may not hold for other writers.
+
+**What it can't see:** changing those metrics while retaining the meaning, or a new sign (punctuation mark) that can alter the meaning: it still doesn't care anyway. And "the 'prompt engineering' risk as I said can manipulate the three signal two measures with varying degrees."
 
 ### The combining rule
 
 <!-- Write the rule in words, then give the numbers. What happens when the two
      signals disagree? -->
 
-**The rule:**
+**The rule:** if one signal is above 0.5 and the other is below 0.5, they disagree and the combined score is 0.5, which lands in "unsure". Otherwise the combined score is the average with equal weights. *(Detail filled in by the coding agent, matching the code: a signal of exactly 0.5 is on neither side, so it never counts as a disagreement; a one-sentence text, whose signal two is 0.5, is averaged.)*
 
-**The numbers:**
+**The numbers:** split point 0.5; weights 0.5 × `model_score` + 0.5 × `style_score` (`config.py`: `SPLIT_POINT`, `WEIGHT_MODEL_SIGNAL`, `WEIGHT_STYLE_SIGNAL`).
+
+**Why** *(assembled by the coding agent at my request from my words; sentence 3 is its analysis, which I agreed with)*: (1) When the two signals point opposite ways I don't trust either one: I wrote `human-own-3` myself, and signal two called it AI-like (0.66) while signal one only barely called it human (0.455). (2) When they agree, I average them with equal weights because neither signal is more trustworthy than the other, and averaging keeps text that both signals flag high, since I want AI-generated texts to be detected. (3) It also protects the false-positive case from Milestone 1: if signal one wrongly flags a human news writer but signal two reads them as human, the result is unsure, never AI.
 
 **Where it lives:** `scoring.py::combine_signals`
 
 <!-- ⚠️ The grader checks your code against that line. If your rule lives
      somewhere else, say where. -->
 
-**A case where my two signals split, and what my rule does with it:**
+**A case where my two signals split, and what my rule does with it:** `samples/human-own-3.txt`, an email I wrote myself. Signal one 0.455 (human side), signal two 0.6624 (AI side). They sit on opposite sides of 0.5, so the combined score is 0.5 and the label is "unsure" (see the Sample Run). Which signal I'd trust on it: "I don't trust any actually. Because I wrote this myself. Real stuff."
 
 
 
@@ -96,14 +122,34 @@
 
 | Label | Score range | The exact text a reader sees |
 |---|---|---|
-| high-confidence human |  |  |
-| unsure |  |  |
-| high-confidence AI |  |  |
+| high-confidence human | 0.00 – 0.31 (0.31 included) | This looks similar to human text. |
+| unsure | above 0.31 and below 0.65 | Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: *[lean]*. How much sentence lengths vary and how many different words are used: *[lean]*. *(Only when the text is one sentence:)* Text should be longer and have multiple sentences. |
+| high-confidence AI | 0.65 – 1.00 (0.65 included) | This is starting to be similar to AI text. |
+
+The `unsure` label is filled in for each text (`scoring.py::score_to_label`). Each *[lean]* is one of: **towards AI** (that test above 0.60), **in the middle** (0.40 to 0.60, both included; `config.MIDDLE_BAND` = 0.1), **towards human** (below 0.40). The first is signal one, the second signal two. My own email `human-own-3` (0.455, 0.6624) reads "in the middle" and "towards AI". No numbers appear in any label.
+
+All three are reached by real submissions: `ai-1` → ai (0.9275), `human-own-2` → human (0.3077), `human-own-3` → unsure (0.5) (`logs/audit.jsonl`, 2026-11-08).
+
+**Where the lines sit:** 0.31, "since I want the human line works for at least 1 sample" (`human-own-2`, my Zoom email, scores 0.3077). 0.65, because "false accusation is bad and we will retain 0.65": at 0.64 my own email `human-own-4` (0.6442) would be labelled AI, and no extra AI text would be caught (the lowest AI text scores 0.6879).
 
 **Why I worded the "unsure" one this way:**
 <!-- It's the hardest of the three. It has to admit uncertainty without
      sounding like an accusation, because the person reading it may well have
      written every word themselves. -->
+
+*(My words are in quotes; the coding agent put the sentences around them together from my decisions, here and in the two parts below.)*
+
+- A text that mixes AI and human writing belongs here; "the mix will always be in there, AI or person (fully) then we need to wait for our model to get it wrong." So a fully human or fully AI text landing here is the model's mistake, and the label shouldn't accuse anyone.
+- I wanted it to give reasons ("Several for sure"), so it names both tests and which way each one leaned, in words. No numbers: the reader has never heard of a threshold.
+- "In the middle" covers a test near 0.5 too, "whether it's exact or not": within 0.1 of 0.5.
+- A one-sentence text gives the second test nothing to compare (commas don't split a sentence), so it asks that the text "should be longer and have multiple sentences".
+- I dropped a "might be a mix of AI and human writing" reason: I didn't want it to overlap with "in the middle", and in my tests blends of my writing with AI text all scored `ai`, not `unsure`.
+
+**Why the AI label is the careful one:** "Stricter for ai, more relaxed for human": a wrong "AI" accuses a real writer, while a wrong "human" lets AI text through, which costs less. As a reader, "I analyze AI-text just like human, except when it looks too weird." So the AI label says "starting to be similar to", and the human label says "looks similar to".
+
+**What a writer can do next:** appeal, with `POST /appeal` and the `content_id` from the response. "It is recorded, but no one re-checks the work and no one is told." The item's status becomes `under_review`.
+
+*Whose words:* the label texts are mine, except the two test names inside the `unsure` label (the coding agent's plain descriptions of the two signals, which I chose to use), the word "is" in the AI label, and the colons and full stops that join the `unsure` label's parts.
 
 
 
@@ -121,36 +167,96 @@
      two off the response, so leaving them out costs you next unit's
      diagnostics. -->
 
+My email `samples/human-own-3.txt` (212 words), sent as JSON. The text is read from the file so the command stays short:
+
 ```bash
-$ curl -X POST http://127.0.0.1:5000/submit \
-  -H "Content-Type: application/json" \
-  -d '{"text": "...", "creator_id": "..."}'
+$ python -c 'import json; print(json.dumps({"text": open("samples/human-own-3.txt").read(), "creator_id": "writer-1"}))' \
+  | curl -s -X POST http://127.0.0.1:5000/submit \
+      -H "Content-Type: application/json" \
+      -d @-
 ```
 
 ```json
-
+{
+  "confidence": 0.5,
+  "content_id": "8a8a85fd-1a3d-458b-b057-5097a4b20438",
+  "guess": "unsure",
+  "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: in the middle. How much sentence lengths vary and how many different words are used: towards AI.",
+  "model_score": 0.455,
+  "style_score": 0.6624
+}
 ```
 
 **An appeal**
 
+The reasoning is a test input written by the coding agent.
+
 ```bash
-$ curl -X POST http://127.0.0.1:5000/appeal \
+$ curl -s -X POST http://127.0.0.1:5000/appeal \
   -H "Content-Type: application/json" \
-  -d '{"content_id": "...", "reasoning": "..."}'
+  -d '{"content_id": "8a8a85fd-1a3d-458b-b057-5097a4b20438", "reasoning": "I wrote this email myself."}'
 ```
 
 ```json
-
+{
+  "content_id": "8a8a85fd-1a3d-458b-b057-5097a4b20438",
+  "message": "Your appeal has been recorded next to the original decision.",
+  "status": "under_review"
+}
 ```
 
 **What the log shows afterwards**
 
+The decision, then the appeal on a later line; the decision line is unchanged. The first entry is an earlier refused request (empty text), logged without a `content_id`.
+
 ```bash
-$ curl "http://127.0.0.1:5000/log?limit=3"
+$ curl -s "http://127.0.0.1:5000/log?limit=3"
 ```
 
 ```json
-
+{
+  "count": 3,
+  "entries": [
+    {
+      "combined_score": null,
+      "content_id": null,
+      "creator_id": "writer-1",
+      "event": "rejected",
+      "guess": null,
+      "http_status": 400,
+      "label": null,
+      "model_score": null,
+      "reason": "empty_text",
+      "status": "rejected",
+      "style_score": null,
+      "timestamp": "2026-11-08T07:17:42+00:00"
+    },
+    {
+      "combined_score": 0.5,
+      "content_id": "8a8a85fd-1a3d-458b-b057-5097a4b20438",
+      "creator_id": "writer-1",
+      "guess": "unsure",
+      "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: in the middle. How much sentence lengths vary and how many different words are used: towards AI.",
+      "model_score": 0.455,
+      "status": "decided",
+      "style_score": 0.6624,
+      "timestamp": "2026-11-08T07:24:22+00:00"
+    },
+    {
+      "combined_score": null,
+      "content_id": "8a8a85fd-1a3d-458b-b057-5097a4b20438",
+      "creator_id": "writer-1",
+      "event": "appeal",
+      "guess": null,
+      "label": null,
+      "model_score": null,
+      "reasoning": "I wrote this email myself.",
+      "status": "under_review",
+      "style_score": null,
+      "timestamp": "2026-11-08T07:24:22+00:00"
+    }
+  ]
+}
 ```
 
 ---
@@ -165,9 +271,11 @@ $ curl "http://127.0.0.1:5000/log?limit=3"
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* before setting signal two's scale, I asked the coding agent to print its raw measures on my 10 texts (5 AI samples and 5 emails I wrote myself).
+- *What came back:* my guess for the unique-word ratio, "high score for human, low score for AI", pointed the wrong way on my own texts: my emails repeat words more than the AI samples, even at equal length (average ratio: AI 0.713, mine 0.689). The agent also pointed out that all five AI samples were written by one model, so the pattern may not hold for other writers.
+- *What I changed:* I flipped the measure, so a higher ratio now counts as AI-like. I chose "sliding 60" (the average over every 60-word window) and "5 words to flip" from tables showing what each option did to my texts.
+
+**On the labels:** I asked the agent to draft the "unsure" sentence; it declined, because the label texts have to be mine, and gave me blanks to fill instead. The two test names inside that label are the agent's plain descriptions of the signals, which I chose to use. It also added "is" to my AI label and the colons and full stops that join the unsure label's parts. Every other label word is mine.
 
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
