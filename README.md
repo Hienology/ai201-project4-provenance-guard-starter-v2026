@@ -426,13 +426,21 @@ How each was run, 2026-11-08 03:23, against the service as committed after M2 *(
 
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1. Score spread | AI average `model_score` − my average ≥ 0.3 | 0.8739 − 0.5480 = 0.3259 | 0.3259 | 0.3259 |  |
-| 2. False positives | at most 2 of my 5 texts flagged (`ai` or `unsure`) | 4 of 5 flagged (4 `unsure`, 1 `human`) | 4 of 5 | 4 of 5 |  |
-| 3. Bad input | at least 4 of 5 return their expected code and `error` | 5 of 5 | 5 of 5 | 5 of 5 |  |
-| 4. Appeal path | all 5 of the 5 checks pass | 5 of 5 (200, `under_review`, appeal on log line 196 after the decision on 195, 409, 404) | 5 of 5 (lines 197 → 198) | 5 of 5 (lines 199 → 200) |  |
-| 5. Label coverage | ≥ 3 of the 5 AI texts `ai`, ≥ 1 of 10 `unsure`, ≥ 2 of 10 `human` | 5 `ai` / 4 `unsure` / 1 `human` | 5 / 4 / 1 | 5 / 4 / 1 |  |
+| 1. Score spread | AI average `model_score` − my average ≥ 0.3 | 0.8739 − 0.5480 = 0.3259 | 0.3259 | 0.3259 | **MET** |
+| 2. False positives | at most 2 of my 5 texts flagged (`ai` or `unsure`) | 4 of 5 flagged (4 `unsure`, 1 `human`) | 4 of 5 | 4 of 5 | **MISSED** |
+| 3. Bad input | at least 4 of 5 return their expected code and `error` | 5 of 5 | 5 of 5 | 5 of 5 | **MET** |
+| 4. Appeal path | all 5 of the 5 checks pass | 5 of 5 (200, `under_review`, appeal on log line 196 after the decision on 195, 409, 404) | 5 of 5 (lines 197 → 198) | 5 of 5 (lines 199 → 200) | **MET** |
+| 5. Label coverage | ≥ 3 of the 5 AI texts `ai`, ≥ 1 of 10 `unsure`, ≥ 2 of 10 `human` | 5 `ai` / 4 `unsure` / 1 `human` | 5 / 4 / 1 | 5 / 4 / 1 | **MISSED** |
 
 All three trials gave identical numbers for every criterion.
+
+**How each verdict was decided** *(the verdicts are mine; the coding agent wrote the comparisons, except 5's reason, which is my words)*:
+
+1. **MET:** the gap was 0.3259 in all three trials, above the 0.3 target.
+2. **MISSED:** 4 of my 5 texts were flagged (all four `unsure`) in all three trials; the target allows at most 2.
+3. **MET:** all 5 bad requests returned their expected code and `error` in all three trials; the target needs at least 4.
+4. **MET:** all 5 checks passed in all three trials.
+5. **MISSED:** "all three trials only return one human label"; the target needs at least 2 of 10. The `ai` part (5 of 5) and the `unsure` part (4 of 10) held.
 
 **Real output from one trial**, pasted as text, naming the file and function
 that produced it:
@@ -796,7 +804,27 @@ HTTP 404
 
      Look for a pattern. Five failures on one signal is one problem, not five. -->
 
+**Criteria 2 and 5 (one diagnosis: the same four texts).** *(My words, put into the frame by the coding agent; its own wording is marked.)* All four of `human-own-1`, `-3`, `-4`, `-5` landed in `unsure` (combined 0.50–0.64), so criterion 2 counted them as flagged and criterion 5 got only one `human` (`human-own-2`, 0.3077).
 
+- **Signal one:** own-1, own-4 and own-5 scored 0.60–0.64 (perplexity about 31–35, slightly on the AI side of the starter's middle at 45). I used Gmail's auto-completion when trying to speed up my own email writing. "One have to ask how much Gmail's auto suggestion 'transform' human text into 'AI text'." (own-3 is the exception: 0.455, the human side.)
+- **Signal two:** all four scored 0.62–0.66, the AI side. *(Formula and numbers written by the coding agent at my request:)* signal two = 0.35 × sentence-length part + 0.65 × word-variety part. The sentence-length part is 0 (fully human) for own-1, own-4 and own-5 (0.372 for own-3), so signal two is close to 0.65 × the word-variety part, and the word-variety part is 0.82–1.00. Any word-variety part above about 0.77 puts signal two on the AI side by itself, even when sentence length reads fully human.
+- **The combining rule links them:** "Given the 50/50 weight distribution, it can either lean to one side or mixed." *(The coding agent's note: "mixed" means the signals sit on opposite sides of 0.5 and the result is 0.5, `unsure`; so lowering only one signal would still give `unsure`. To reach `human`, both signals must be below 0.5 and average 0.31 or less.)*
+
+I looked at moving the human line (the label mapping) and chose to look upstream instead: lower the score rather than move the line.
+
+**MF03 and MF05 (broke: garbage given a confident label). Stages: signal one and the route.** "Signal two is the same for these two cases while signal one are at the two extremes for these two cases." *(The coding agent's facts:)* both are a single "sentence", so signal two returns 0.5 (my one-sentence rule) and signal one decides alone. MF03, control characters around "test", has perplexity 188,414, so signal one is 0.0 and the combined score is (0.0 + 0.5) ÷ 2 = 0.25 → `human`. MF05, one 2,000-letter word, has perplexity 1.0, so signal one is 0.9976 and the combined score is 0.749 → `ai`. Both passed the route: at least 3 tokens (`detector.py`, the fewer-than-3 check) and at least one word.
+
+**FP03 and FP04 (broke: human writing labelled `ai`). Stages: signal one and signal two.** *(My Milestone 1 blind spot in quotes; the numbers are the coding agent's.)* Both signals sat on the AI side, so the combining rule averaged them to `ai`. Signal one: "A highly structured, repetitive way of writing sentences can lead to mistaken identification as AI." Careful second-language English (FP03) and an essay written to a rubric (FP04) have perplexity 18.5 and 16.5, as easy to guess as my AI samples (15–18), so signal one gives 0.8051 and 0.8329. Signal two: their sentences are even in length (spread 0.328 and 0.367, close to the 0.3 that scores fully AI), so the sentence-length part is 0.906 and 0.778; with the word-variety part at 0.663 and 0.769, signal two is 0.7483 and 0.772.
+
+**The pattern** *(the coding agent's summary of the diagnoses above; I asked it to keep and expand it)*. Six failures (criteria 2 and 5, FP03, FP04, MF03, MF05), and they come from the same few places:
+
+1. **Signal one treats "easy to guess" as "AI".** Plain or carefully structured human writing is easy for GPT-2 to guess, so it lands on the AI side: my emails at perplexity 31–35 score 0.60–0.64, and FP03 and FP04 at 16.5–18.5 score 0.81–0.83, the same range as my AI samples (15–18). Predictability alone can't tell careful human writing from AI writing.
+2. **Signal one goes to an extreme on nonsense.** Control characters are wildly surprising (perplexity 188,414 → 0.0, "human"); one repeated letter is perfectly predictable (perplexity 1.0 → 0.9976, "AI"). Neither number says anything about who wrote it.
+3. **Signal two's two parts can point opposite ways, and word variety usually wins.** For my emails, sentence length reads human (0 on three of them) but word variety reads AI (0.82–1.00); with its weight of 0.65, word variety above about 0.77 puts signal two on the AI side by itself. For FP03 and FP04 it is the sentence-length part that reads AI (0.78–0.91), because their sentences are very even.
+4. **The combining rule decides what those leans become.** Two mild AI leans average into the top of `unsure` (my emails, 0.61–0.64). Two strong AI leans average into `ai` (FP03, FP04). A neutral signal two (0.5 for one sentence) lets signal one decide alone (MF03, MF05). Opposite leans give exactly 0.5 (own-3). So lowering only one signal can't move my emails to `human`.
+5. **The route lets nonsense reach the signals.** Anything with at least 3 tokens and one word is scored, so MF03 and MF05 got confident labels instead of a refusal.
+
+What held, for contrast: no evasion reached `human`, the injected instructions had no effect (neither signal reads instructions; PI03 and PI05 still scored `ai`), and every malformed request the route refused was logged.
 
 ---
 
