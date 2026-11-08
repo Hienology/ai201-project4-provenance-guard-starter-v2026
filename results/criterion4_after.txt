@@ -1,0 +1,118 @@
+# Criterion 4 (appeal path), after — bash samples/appeal_check.sh, three trials, 2026-11-08 16:58
+
+## Trial 1
+
+0. submit samples/human-own-1.txt fresh
+{
+  "confidence": 0.6111,
+  "content_id": "b64b403e-0453-4782-823d-1fe3064f9136",
+  "guess": "unsure",
+  "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+  "model_score": 0.6019,
+  "style_score": 0.6204
+}
+
+1-2. first appeal (expect 200, status under_review)
+{
+  "content_id": "b64b403e-0453-4782-823d-1fe3064f9136",
+  "message": "Your appeal has been recorded next to the original decision.",
+  "status": "under_review"
+}
+HTTP 200
+
+3. GET /log: every entry for b64b403e-0453-4782-823d-1fe3064f9136, with its line number (expect the decision, then the appeal on a later line)
+line 347 event=decision status=decided
+line 348 event=appeal status=under_review
+
+4. second appeal on the same id (expect 409 already_appealed)
+{
+  "error": "already_appealed",
+  "message": "This decision has already been appealed."
+}
+HTTP 409
+
+5. made-up content_id (expect 404 unknown_content_id)
+{
+  "error": "unknown_content_id",
+  "message": "No decision was found for that content_id."
+}
+HTTP 404
+
+
+## Trial 2
+
+0. submit samples/human-own-1.txt fresh
+{
+  "confidence": 0.6111,
+  "content_id": "73fb8b1f-6ac8-4a6f-a201-6e3741a0cf05",
+  "guess": "unsure",
+  "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+  "model_score": 0.6019,
+  "style_score": 0.6204
+}
+
+1-2. first appeal (expect 200, status under_review)
+{
+  "content_id": "73fb8b1f-6ac8-4a6f-a201-6e3741a0cf05",
+  "message": "Your appeal has been recorded next to the original decision.",
+  "status": "under_review"
+}
+HTTP 200
+
+3. GET /log: every entry for 73fb8b1f-6ac8-4a6f-a201-6e3741a0cf05, with its line number (expect the decision, then the appeal on a later line)
+line 349 event=decision status=decided
+line 350 event=appeal status=under_review
+
+4. second appeal on the same id (expect 409 already_appealed)
+{
+  "error": "already_appealed",
+  "message": "This decision has already been appealed."
+}
+HTTP 409
+
+5. made-up content_id (expect 404 unknown_content_id)
+{
+  "error": "unknown_content_id",
+  "message": "No decision was found for that content_id."
+}
+HTTP 404
+
+
+## Trial 3
+
+0. submit samples/human-own-1.txt fresh
+{
+  "confidence": 0.6111,
+  "content_id": "1c18a791-a2ae-4ead-819b-6058f97d44b5",
+  "guess": "unsure",
+  "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+  "model_score": 0.6019,
+  "style_score": 0.6204
+}
+
+1-2. first appeal (expect 200, status under_review)
+{
+  "content_id": "1c18a791-a2ae-4ead-819b-6058f97d44b5",
+  "message": "Your appeal has been recorded next to the original decision.",
+  "status": "under_review"
+}
+HTTP 200
+
+3. GET /log: every entry for 1c18a791-a2ae-4ead-819b-6058f97d44b5, with its line number (expect the decision, then the appeal on a later line)
+line 351 event=decision status=decided
+line 352 event=appeal status=under_review
+
+4. second appeal on the same id (expect 409 already_appealed)
+{
+  "error": "already_appealed",
+  "message": "This decision has already been appealed."
+}
+HTTP 409
+
+5. made-up content_id (expect 404 unknown_content_id)
+{
+  "error": "unknown_content_id",
+  "message": "No decision was found for that content_id."
+}
+HTTP 404
+

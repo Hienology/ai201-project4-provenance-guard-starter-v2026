@@ -88,8 +88,12 @@ SPLIT_POINT = 0.5
 # Chosen after M4 (student): 0.31 so the human line works for at least one of
 # my own texts; 0.65 based on the M4 results. Both sit either side of
 # SPLIT_POINT, so a disagreement (0.5) always lands in "unsure".
+#
+# Unit 8 improvement (student): the AI line moved from 0.65 to 0.81, so careful
+# human writing that scored like the attack set's FP03 (0.7767) and FP04
+# (0.8024) gets "unsure" instead of "ai".
 HUMAN_THRESHOLD = 0.31
-AI_THRESHOLD = 0.65
+AI_THRESHOLD = 0.81
 
 # The unsure label says which way each test leaned (student, M5). A test within
 # MIDDLE_BAND of SPLIT_POINT (0.40-0.60, both ends included) reads "in the
