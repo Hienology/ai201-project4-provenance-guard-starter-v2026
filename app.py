@@ -153,6 +153,19 @@ def health():
 
 # ── YOU BUILD THIS ────────────────────────────────────────────────────────────
 
+def _refuse(status, error, message, creator_id=None):
+    """
+    A request /submit won't score: logged as a rejection (no content_id), then
+    answered. A refused request that leaves no trace is an attack you can't see.
+    """
+    audit.log_rejection(
+        creator_id=creator_id if isinstance(creator_id, str) and creator_id else "unknown",
+        reason=error,
+        http_status=status,
+    )
+    return jsonify({"error": error, "message": message}), status
+
+
 @app.post("/submit")
 # @limiter.limit(f"{config.RATE_LIMIT_PER_MINUTE}/minute;{config.RATE_LIMIT_PER_DAY}/day")
 def submit():
@@ -202,49 +215,37 @@ def submit():
     what should this do when `text` is missing, empty, or enormous? A crash on
     a malformed input is one of the most common real failures there is.
     """
-    # Bad input never reaches a signal, and never gets a content_id.
+    # Bad input never reaches a signal, and never gets a content_id. Each refusal
+    # is logged as a rejection (unit 8).
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
-        return jsonify({
-            "error": "invalid_json",
-            "message": "The request body must be JSON.",
-        }), 400
+        return _refuse(400, "invalid_json", "The request body must be JSON.")
 
     text = payload.get("text")
     creator_id = payload.get("creator_id")
     if not isinstance(text, str) or not isinstance(creator_id, str):
-        return jsonify({
-            "error": "missing_field",
-            "message": "Both text and creator_id are required.",
-        }), 422
+        return _refuse(422, "missing_field", "Both text and creator_id are required.",
+                       creator_id)
     # Leading/trailing whitespace moves signal one's score, so it never gets scored.
     text = text.strip()
     if not text:
-        return jsonify({
-            "error": "empty_text",
-            "message": "The text is empty.",
-        }), 400
+        return _refuse(400, "empty_text", "The text is empty.", creator_id)
     # Punctuation-only text passes signal one but gives signal two nothing to count.
     n_words = len(stylometry.words(text))
     if n_words == 0:
-        return jsonify({
-            "error": "no_words",
-            "message": "The text has no words to score.",
-        }), 400
+        return _refuse(400, "no_words", "The text has no words to score.", creator_id)
     if n_words > config.MAX_WORDS:
-        return jsonify({
-            "error": "text_too_long",
-            "message": f"The text is too long to score. Please send at most {config.MAX_WORDS} words.",
-        }), 413
+        return _refuse(413, "text_too_long",
+                       f"The text is too long to score. Please send at most {config.MAX_WORDS} words.",
+                       creator_id)
 
     # Signal one. Under 3 tokens it raises ValueError: too little to score.
     try:
         model_score = detector.model_signal(text)
     except ValueError:
-        return jsonify({
-            "error": "text_too_short",
-            "message": "The text is too short to score. Please send at least a few sentences.",
-        }), 400
+        return _refuse(400, "text_too_short",
+                       "The text is too short to score. Please send at least a few sentences.",
+                       creator_id)
 
     # Signal two. It can't raise here: no-word text was rejected above.
     style_score = stylometry.style_signal(text)
@@ -252,21 +253,27 @@ def submit():
 
     # Only real decisions get an id: after the combined score, before the label.
     content_id = str(uuid.uuid4())
+    guess, label = scoring.score_to_label(
+        combined_score, model_score, style_score,
+        one_sentence=len(stylometry.sentences(text)) < 2,
+    )
 
     audit.log_decision(
         content_id=content_id,
         creator_id=creator_id,
+        guess=guess,
         model_score=model_score,
         style_score=style_score,
         combined_score=combined_score,
+        label=label,
     )
 
-    # confidence = combined_score (AI-likelihood, M1 contract). guess and label in M5.
+    # confidence = combined_score (AI-likelihood, M1 contract).
     return jsonify({
         "content_id": content_id,
-        "guess": None,
+        "guess": guess,
         "confidence": combined_score,
-        "label": None,
+        "label": label,
         "model_score": model_score,
         "style_score": style_score,
     })
@@ -292,14 +299,51 @@ def appeal():
     to the person on the other end. It's the only thing standing between a
     wrong accusation and nothing at all.
     """
-    payload = request.get_json(silent=True) or {}
+    # Not JSON / missing content_id follow the /submit rules (M1 contract).
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({
+            "error": "invalid_json",
+            "message": "The request body must be JSON.",
+        }), 400
 
-    # TODO: delete this and build the route.
+    content_id = payload.get("content_id")
+    # Missing or empty reasoning is allowed (M1 contract).
+    reasoning = payload.get("reasoning")
+    if reasoning is None:
+        reasoning = ""
+    if not isinstance(content_id, str) or not isinstance(reasoning, str):
+        return jsonify({
+            "error": "missing_field",
+            "message": "A content_id is required, and reasoning, if sent, must be text.",
+        }), 422
+
+    # Decision entries carry no "event"; appeals and rejections do.
+    entries = audit.entries_for(content_id)
+    decisions = [e for e in entries if "event" not in e]
+    if not decisions:
+        return jsonify({
+            "error": "unknown_content_id",
+            "message": "No decision was found for that content_id.",
+        }), 404
+    if any(e.get("event") == "appeal" for e in entries):
+        return jsonify({
+            "error": "already_appealed",
+            "message": "This decision has already been appealed.",
+        }), 409
+
+    # /appeal isn't sent a creator_id, so it comes from the original decision.
+    # The decision line stays as it was; the appeal is appended after it.
+    audit.log_appeal(
+        content_id=content_id,
+        creator_id=decisions[0]["creator_id"],
+        reasoning=reasoning,
+    )
     return jsonify({
-        "error": "not_implemented",
-        "message": "POST /appeal isn't built yet — see the TODO in app.py.",
-        "you_sent": payload,
-    }), 501
+        "content_id": content_id,
+        "status": "under_review",
+        "message": "Your appeal has been recorded next to the original decision.",
+    })
 
 
 # ── Already works ─────────────────────────────────────────────────────────────

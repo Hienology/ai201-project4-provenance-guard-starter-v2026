@@ -64,10 +64,16 @@ def combine_signals(model_score: float, style_score: float) -> float:
     )
 
 
-def score_to_label(score: float) -> tuple[str, str]:
+def score_to_label(
+    score: float, model_score: float, style_score: float, one_sentence: bool
+) -> tuple[str, str]:
     """
     Turn a score into a guess and the text a reader actually sees.
     ← TODO (Milestone 5)
+
+    Built (M5): `ai` and `human` are fixed sentences. `unsure` is built per
+    text from both signal scores (which way each test leaned, in words) and
+    whether the text is a single sentence.
 
     Returns:
         (guess, label_text) — where `guess` is a short machine-readable string
@@ -90,12 +96,29 @@ def score_to_label(score: float) -> tuple[str, str]:
     think if they got it on their own work. That question is the whole
     milestone.
     """
-    # TODO: replace this — thresholds are in config.py
+    # The student's labels (M5). Both lines are inclusive (config.py). The AI
+    # label makes the weaker claim of the two: a wrong "AI" accuses a writer.
     if score >= config.AI_THRESHOLD:
-        return "ai", "PLACEHOLDER — write the high-confidence AI label."
+        return "ai", "This is starting to be similar to AI text."
     if score <= config.HUMAN_THRESHOLD:
-        return "human", "PLACEHOLDER — write the high-confidence human label."
-    return "unsure", "PLACEHOLDER — write the unsure label."
+        return "human", "This looks similar to human text."
+    # Unsure says which way each test leaned, never the numbers (student, M5).
+    parts = [
+        "Not enough convincing evidence for a specific direction like human or AI.",
+        f"How predictable the wording is to a language model: {_lean(model_score)}.",
+        "How much sentence lengths vary and how many different words are used: "
+        f"{_lean(style_score)}.",
+    ]
+    if one_sentence:
+        parts.append("Text should be longer and have multiple sentences.")
+    return "unsure", " ".join(parts)
+
+
+def _lean(signal: float) -> str:
+    """One test's lean in words: within MIDDLE_BAND of SPLIT_POINT is the middle."""
+    if abs(round(signal - config.SPLIT_POINT, 4)) <= config.MIDDLE_BAND:
+        return "in the middle"
+    return "towards AI" if signal > config.SPLIT_POINT else "towards human"
 
 
 def label_ranges() -> list[tuple[str, str]]:

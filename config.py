@@ -73,17 +73,28 @@ SPLIT_POINT = 0.5
 # Where one label becomes another. Scores run 0.0 (confidently human) to 1.0
 # (confidently AI).
 #
-#   score < HUMAN_THRESHOLD          -> high-confidence human
+#   score <= HUMAN_THRESHOLD         -> high-confidence human
 #   between the two                  -> unsure
-#   score > AI_THRESHOLD             -> high-confidence AI
+#   score >= AI_THRESHOLD            -> high-confidence AI
+#
+# A score exactly on a line takes that line's label (student, M5), as
+# scoring.score_to_label already does.
 #
 # ⚠️ This is where your false-positive decision from Milestone 1 actually gets
 # made. Widening the unsure band means fewer wrong accusations and more AI text
 # getting through. There is no setting that avoids the trade — only settings
 # that decide who pays for it.
 
-HUMAN_THRESHOLD = 0.35
+# Chosen after M4 (student): 0.31 so the human line works for at least one of
+# my own texts; 0.65 based on the M4 results. Both sit either side of
+# SPLIT_POINT, so a disagreement (0.5) always lands in "unsure".
+HUMAN_THRESHOLD = 0.31
 AI_THRESHOLD = 0.65
+
+# The unsure label says which way each test leaned (student, M5). A test within
+# MIDDLE_BAND of SPLIT_POINT (0.40-0.60, both ends included) reads "in the
+# middle"; above that "towards AI", below it "towards human".
+MIDDLE_BAND = 0.1
 
 # ⚠️ One thing that catches people out in Milestone 5. A weighted average can
 # only land between its two inputs — so while `style_signal` is still the stub
