@@ -418,20 +418,367 @@ whose work got caught by it:
 
 <!-- Your five criteria across three trials. `run_eval.py --label before`. -->
 
+How each was run, 2026-11-08 03:23, against the service as committed after M2 *(the coding agent filled `scenarios.py` from the criteria's own wording)*:
+
+- **Criteria 1, 2, 5:** `python run_eval.py --label before` (`scenarios.py`: `c1 score spread`, `c2 false positives`, `c5 label coverage`) → `results/run_2026-11-08_0323_before.md`.
+- **Criterion 3, by hand:** `bash samples/bad_input.sh`, three times → `results/criterion3_before.txt`. `run_eval.py` can't send a body that isn't JSON, and doesn't record the `error` field this criterion reads.
+- **Criterion 4, by hand:** `bash samples/appeal_check.sh`, three times → `results/criterion4_before.txt`. It submits `samples/human-own-1.txt` fresh, appeals it, prints the log lines for that `content_id`, appeals again, then appeals `00000000-0000-0000-0000-000000000000`. The first attempt's log check crashed on a quoting bug in that script (not in the service); the script was fixed and all three trials were run again.
+
 | Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
 |---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |
+| 1. Score spread | AI average `model_score` − my average ≥ 0.3 | 0.8739 − 0.5480 = 0.3259 | 0.3259 | 0.3259 |  |
+| 2. False positives | at most 2 of my 5 texts flagged (`ai` or `unsure`) | 4 of 5 flagged (4 `unsure`, 1 `human`) | 4 of 5 | 4 of 5 |  |
+| 3. Bad input | at least 4 of 5 return their expected code and `error` | 5 of 5 | 5 of 5 | 5 of 5 |  |
+| 4. Appeal path | all 5 of the 5 checks pass | 5 of 5 (200, `under_review`, appeal on log line 196 after the decision on 195, 409, 404) | 5 of 5 (lines 197 → 198) | 5 of 5 (lines 199 → 200) |  |
+| 5. Label coverage | ≥ 3 of the 5 AI texts `ai`, ≥ 1 of 10 `unsure`, ≥ 2 of 10 `human` | 5 `ai` / 4 `unsure` / 1 `human` | 5 / 4 / 1 | 5 / 4 / 1 |  |
+
+All three trials gave identical numbers for every criterion.
 
 **Real output from one trial**, pasted as text, naming the file and function
 that produced it:
 
-```json
+Trial 1 of each criterion. Criteria 1, 2 and 5 come from `run_eval.py::main` (written to `results/run_2026-11-08_0323_before.md`); criteria 3 and 4 from `samples/bad_input.sh` and `samples/appeal_check.sh`.
 
+<details>
+<summary>Criterion 1 — run_eval.py::main, c1 score spread, trial 1</summary>
+
+```json
+[
+  {
+    "status": 200,
+    "guess": "ai",
+    "confidence": 0.9275,
+    "model_score": 0.8551,
+    "style_score": 1.0,
+    "label": "This is starting to be similar to AI text.",
+    "sent": "In a significant development for the technology sector, several major "
+  },
+  {
+    "status": 200,
+    "guess": "ai",
+    "confidence": 0.9449,
+    "model_score": 0.8899,
+    "style_score": 1.0,
+    "label": "This is starting to be similar to AI text.",
+    "sent": "Remote work has become an increasingly popular option for employees an"
+  },
+  {
+    "status": 200,
+    "guess": "ai",
+    "confidence": 0.9269,
+    "model_score": 0.8539,
+    "style_score": 1.0,
+    "label": "This is starting to be similar to AI text.",
+    "sent": "Introducing the Lumio Smart Coffee Maker, the perfect addition to any "
+  },
+  {
+    "status": 200,
+    "guess": "ai",
+    "confidence": 0.9382,
+    "model_score": 0.8763,
+    "style_score": 1.0,
+    "label": "This is starting to be similar to AI text.",
+    "sent": "Social media has fundamentally transformed the way people communicate "
+  },
+  {
+    "status": 200,
+    "guess": "ai",
+    "confidence": 0.8202,
+    "model_score": 0.8942,
+    "style_score": 0.7462,
+    "label": "This is starting to be similar to AI text.",
+    "sent": "Dear Team, I hope this message finds you well. I am pleased to share s"
+  },
+  {
+    "status": 200,
+    "guess": "unsure",
+    "confidence": 0.6111,
+    "model_score": 0.6019,
+    "style_score": 0.6204,
+    "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+    "sent": "I'm [my name] from your [course and section] which meets every Monday "
+  },
+  {
+    "status": 200,
+    "guess": "human",
+    "confidence": 0.3077,
+    "model_score": 0.4334,
+    "style_score": 0.182,
+    "label": "This looks similar to human text.",
+    "sent": "Dear Professor, I have tried signing in my Zoom account using my [my s"
+  },
+  {
+    "status": 200,
+    "guess": "unsure",
+    "confidence": 0.5,
+    "model_score": 0.455,
+    "style_score": 0.6624,
+    "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: in the middle. How much sentence lengths vary and how many different words are used: towards AI.",
+    "sent": "Good afternoon Professor, I'm [my name] from your [course and section]"
+  },
+  {
+    "status": 200,
+    "guess": "unsure",
+    "confidence": 0.6442,
+    "model_score": 0.6384,
+    "style_score": 0.65,
+    "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+    "sent": "Dear Professor, I'm [my name] from your [course and section] which mee"
+  },
+  {
+    "status": 200,
+    "guess": "unsure",
+    "confidence": 0.6305,
+    "model_score": 0.6111,
+    "style_score": 0.65,
+    "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+    "sent": "Dear [instructor name], I am [my name], a student of your [course and "
+  }
+]
 ```
+
+</details>
+
+<details>
+<summary>Criterion 2 — run_eval.py::main, c2 false positives, trial 1</summary>
+
+```json
+[
+  {
+    "status": 200,
+    "guess": "unsure",
+    "confidence": 0.6111,
+    "model_score": 0.6019,
+    "style_score": 0.6204,
+    "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+    "sent": "I'm [my name] from your [course and section] which meets every Monday "
+  },
+  {
+    "status": 200,
+    "guess": "human",
+    "confidence": 0.3077,
+    "model_score": 0.4334,
+    "style_score": 0.182,
+    "label": "This looks similar to human text.",
+    "sent": "Dear Professor, I have tried signing in my Zoom account using my [my s"
+  },
+  {
+    "status": 200,
+    "guess": "unsure",
+    "confidence": 0.5,
+    "model_score": 0.455,
+    "style_score": 0.6624,
+    "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: in the middle. How much sentence lengths vary and how many different words are used: towards AI.",
+    "sent": "Good afternoon Professor, I'm [my name] from your [course and section]"
+  },
+  {
+    "status": 200,
+    "guess": "unsure",
+    "confidence": 0.6442,
+    "model_score": 0.6384,
+    "style_score": 0.65,
+    "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+    "sent": "Dear Professor, I'm [my name] from your [course and section] which mee"
+  },
+  {
+    "status": 200,
+    "guess": "unsure",
+    "confidence": 0.6305,
+    "model_score": 0.6111,
+    "style_score": 0.65,
+    "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+    "sent": "Dear [instructor name], I am [my name], a student of your [course and "
+  }
+]
+```
+
+</details>
+
+<details>
+<summary>Criterion 3 — samples/bad_input.sh, trial 1</summary>
+
+```text
+1. not JSON (expect 400 invalid_json)
+{
+  "error": "invalid_json",
+  "message": "The request body must be JSON."
+}
+HTTP 400
+
+2. missing creator_id (expect 422 missing_field)
+{
+  "error": "missing_field",
+  "message": "Both text and creator_id are required."
+}
+HTTP 422
+
+3. empty text (expect 400 empty_text)
+{
+  "error": "empty_text",
+  "message": "The text is empty."
+}
+HTTP 400
+
+4. too short (expect 400 text_too_short)
+{
+  "error": "text_too_short",
+  "message": "The text is too short to score. Please send at least a few sentences."
+}
+HTTP 400
+
+5. over 350 words (expect 413 text_too_long)
+{
+  "error": "text_too_long",
+  "message": "The text is too long to score. Please send at most 350 words."
+}
+HTTP 413
+```
+
+</details>
+
+<details>
+<summary>Criterion 4 — samples/appeal_check.sh, trial 1</summary>
+
+```text
+0. submit samples/human-own-1.txt fresh
+{
+  "confidence": 0.6111,
+  "content_id": "99e2c9ea-4488-4984-a8b4-0244e226f152",
+  "guess": "unsure",
+  "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+  "model_score": 0.6019,
+  "style_score": 0.6204
+}
+
+1-2. first appeal (expect 200, status under_review)
+{
+  "content_id": "99e2c9ea-4488-4984-a8b4-0244e226f152",
+  "message": "Your appeal has been recorded next to the original decision.",
+  "status": "under_review"
+}
+HTTP 200
+
+3. GET /log: every entry for 99e2c9ea-4488-4984-a8b4-0244e226f152, with its line number (expect the decision, then the appeal on a later line)
+line 195 event=decision status=decided
+line 196 event=appeal status=under_review
+
+4. second appeal on the same id (expect 409 already_appealed)
+{
+  "error": "already_appealed",
+  "message": "This decision has already been appealed."
+}
+HTTP 409
+
+5. made-up content_id (expect 404 unknown_content_id)
+{
+  "error": "unknown_content_id",
+  "message": "No decision was found for that content_id."
+}
+HTTP 404
+```
+
+</details>
+
+<details>
+<summary>Criterion 5 — run_eval.py::main, c5 label coverage, trial 1</summary>
+
+```json
+[
+  {
+    "status": 200,
+    "guess": "ai",
+    "confidence": 0.9275,
+    "model_score": 0.8551,
+    "style_score": 1.0,
+    "label": "This is starting to be similar to AI text.",
+    "sent": "In a significant development for the technology sector, several major "
+  },
+  {
+    "status": 200,
+    "guess": "ai",
+    "confidence": 0.9449,
+    "model_score": 0.8899,
+    "style_score": 1.0,
+    "label": "This is starting to be similar to AI text.",
+    "sent": "Remote work has become an increasingly popular option for employees an"
+  },
+  {
+    "status": 200,
+    "guess": "ai",
+    "confidence": 0.9269,
+    "model_score": 0.8539,
+    "style_score": 1.0,
+    "label": "This is starting to be similar to AI text.",
+    "sent": "Introducing the Lumio Smart Coffee Maker, the perfect addition to any "
+  },
+  {
+    "status": 200,
+    "guess": "ai",
+    "confidence": 0.9382,
+    "model_score": 0.8763,
+    "style_score": 1.0,
+    "label": "This is starting to be similar to AI text.",
+    "sent": "Social media has fundamentally transformed the way people communicate "
+  },
+  {
+    "status": 200,
+    "guess": "ai",
+    "confidence": 0.8202,
+    "model_score": 0.8942,
+    "style_score": 0.7462,
+    "label": "This is starting to be similar to AI text.",
+    "sent": "Dear Team, I hope this message finds you well. I am pleased to share s"
+  },
+  {
+    "status": 200,
+    "guess": "unsure",
+    "confidence": 0.6111,
+    "model_score": 0.6019,
+    "style_score": 0.6204,
+    "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+    "sent": "I'm [my name] from your [course and section] which meets every Monday "
+  },
+  {
+    "status": 200,
+    "guess": "human",
+    "confidence": 0.3077,
+    "model_score": 0.4334,
+    "style_score": 0.182,
+    "label": "This looks similar to human text.",
+    "sent": "Dear Professor, I have tried signing in my Zoom account using my [my s"
+  },
+  {
+    "status": 200,
+    "guess": "unsure",
+    "confidence": 0.5,
+    "model_score": 0.455,
+    "style_score": 0.6624,
+    "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: in the middle. How much sentence lengths vary and how many different words are used: towards AI.",
+    "sent": "Good afternoon Professor, I'm [my name] from your [course and section]"
+  },
+  {
+    "status": 200,
+    "guess": "unsure",
+    "confidence": 0.6442,
+    "model_score": 0.6384,
+    "style_score": 0.65,
+    "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+    "sent": "Dear Professor, I'm [my name] from your [course and section] which mee"
+  },
+  {
+    "status": 200,
+    "guess": "unsure",
+    "confidence": 0.6305,
+    "model_score": 0.6111,
+    "style_score": 0.65,
+    "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.",
+    "sent": "Dear [instructor name], I am [my name], a student of your [course and "
+  }
+]
+```
+
+</details>
+
 
 **Diagnoses**
 

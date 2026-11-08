@@ -1,0 +1,115 @@
+# Criterion 3 (bad input), before — bash samples/bad_input.sh, three trials, 2026-11-08 03:23
+
+## Trial 1
+
+1. not JSON (expect 400 invalid_json)
+{
+  "error": "invalid_json",
+  "message": "The request body must be JSON."
+}
+HTTP 400
+
+2. missing creator_id (expect 422 missing_field)
+{
+  "error": "missing_field",
+  "message": "Both text and creator_id are required."
+}
+HTTP 422
+
+3. empty text (expect 400 empty_text)
+{
+  "error": "empty_text",
+  "message": "The text is empty."
+}
+HTTP 400
+
+4. too short (expect 400 text_too_short)
+{
+  "error": "text_too_short",
+  "message": "The text is too short to score. Please send at least a few sentences."
+}
+HTTP 400
+
+5. over 350 words (expect 413 text_too_long)
+{
+  "error": "text_too_long",
+  "message": "The text is too long to score. Please send at most 350 words."
+}
+HTTP 413
+
+
+## Trial 2
+
+1. not JSON (expect 400 invalid_json)
+{
+  "error": "invalid_json",
+  "message": "The request body must be JSON."
+}
+HTTP 400
+
+2. missing creator_id (expect 422 missing_field)
+{
+  "error": "missing_field",
+  "message": "Both text and creator_id are required."
+}
+HTTP 422
+
+3. empty text (expect 400 empty_text)
+{
+  "error": "empty_text",
+  "message": "The text is empty."
+}
+HTTP 400
+
+4. too short (expect 400 text_too_short)
+{
+  "error": "text_too_short",
+  "message": "The text is too short to score. Please send at least a few sentences."
+}
+HTTP 400
+
+5. over 350 words (expect 413 text_too_long)
+{
+  "error": "text_too_long",
+  "message": "The text is too long to score. Please send at most 350 words."
+}
+HTTP 413
+
+
+## Trial 3
+
+1. not JSON (expect 400 invalid_json)
+{
+  "error": "invalid_json",
+  "message": "The request body must be JSON."
+}
+HTTP 400
+
+2. missing creator_id (expect 422 missing_field)
+{
+  "error": "missing_field",
+  "message": "Both text and creator_id are required."
+}
+HTTP 422
+
+3. empty text (expect 400 empty_text)
+{
+  "error": "empty_text",
+  "message": "The text is empty."
+}
+HTTP 400
+
+4. too short (expect 400 text_too_short)
+{
+  "error": "text_too_short",
+  "message": "The text is too short to score. Please send at least a few sentences."
+}
+HTTP 400
+
+5. over 350 words (expect 413 text_too_long)
+{
+  "error": "text_too_long",
+  "message": "The text is too long to score. Please send at most 350 words."
+}
+HTTP 413
+

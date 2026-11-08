@@ -22,49 +22,47 @@ A scenario carries **either** of these:
               because you cannot express "the field is missing" as a string.
 """
 
+from pathlib import Path
+
+_SAMPLES = Path(__file__).parent / "samples"
+
+
+def _read(name: str) -> str:
+    return (_SAMPLES / name).read_text(encoding="utf-8")
+
+
+# The inputs criteria.md names: 5 AI texts and the 5 texts I wrote, in samples/.
+AI_TEXTS = [_read(f"ai-{i}.txt") for i in range(1, 6)]
+MY_TEXTS = [_read(f"human-own-{i}.txt") for i in range(1, 6)]
+
+# Each name's first 12 characters differ, so each criterion gets its own
+# creator_ids (run_eval.py builds them from the name).
 SCENARIOS = [
     {
-        "name": "my own writing",
+        "name": "c1 score spread",
         "criterion": 1,
-        # ⚠️ PUT YOUR OWN WRITING HERE. Not AI text, not a sample from the web —
-        # things you actually wrote. This is the criterion that matters most and
-        # it's meaningless with someone else's prose.
-        "texts": [
-            "REPLACE ME with a paragraph you wrote yourself.",
-            "REPLACE ME with another one. Ten pieces is the usual number.",
-        ],
+        # Read: model_score. Pass: AI average − my average ≥ 0.3, every trial.
+        "texts": AI_TEXTS + MY_TEXTS,
     },
     {
-        "name": "label coverage",
+        "name": "c2 false positives",
         "criterion": 2,
-        # Inputs spread across your score range, so you can check all three
-        # labels are actually reachable.
-        "texts": [
-            "REPLACE ME with something you're confident is AI-generated.",
-            "REPLACE ME with something you're confident is human-written.",
-            "REPLACE ME with something genuinely borderline.",
-        ],
+        # Read: guess. Flagged = ai or unsure. Pass: at most 2 of 5, every trial.
+        "texts": MY_TEXTS,
     },
-    # A bad-input criterion looks like this. Uncomment and adjust if that's one
-    # of your five — these are raw request bodies, sent exactly as written.
-    #
-    # {
-    #     "name": "bad input",
-    #     "criterion": 3,
-    #     "bodies": [
-    #         {"text": "", "creator_id": "eval_bad_empty"},
-    #         {"creator_id": "eval_bad_missing"},          # no text field at all
-    #         {"text": "word " * 50000, "creator_id": "eval_bad_huge"},
-    #         {"text": None, "creator_id": "eval_bad_null"},
-    #     ],
-    # },
-
-    # TODO: add what your remaining criteria need.
-    #
-    # A criterion about the appeal path can't be tested by sending text alone;
-    # it needs a submission first and then an appeal against the content_id
-    # that came back. You'll need to test that one by hand, or extend this file
-    # and run_eval.py to do it. Saying which you did is part of the write-up.
+    {
+        "name": "c5 label coverage",
+        "criterion": 5,
+        # Read: guess. Pass: ≥ 3 of the 5 AI get ai, ≥ 1 of 10 unsure,
+        # ≥ 2 of 10 human, every trial.
+        "texts": AI_TEXTS + MY_TEXTS,
+    },
+    # Criteria 3 and 4 are run by hand, three times each, not from here:
+    #   3 (bad input): `bash samples/bad_input.sh`. One of its five requests is
+    #     not JSON, which run_eval.py can't send, and run_eval.py doesn't record
+    #     the `error` field the criterion reads.
+    #   4 (appeal path): `bash samples/appeal_check.sh`. It needs a submission,
+    #     then appeals against the content_id that came back, then GET /log.
 ]
 
 
