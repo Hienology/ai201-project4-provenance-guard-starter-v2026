@@ -277,6 +277,20 @@ $ curl -s "http://127.0.0.1:5000/log?limit=3"
 
 **On the labels:** I asked the agent to draft the "unsure" sentence; it declined, because the label texts have to be mine, and gave me blanks to fill instead. The two test names inside that label are the agent's plain descriptions of the signals, which I chose to use. It also added "is" to my AI label and the colons and full stops that join the unsure label's parts. Every other label word is mine.
 
+**Moment 3 (Unit 8)**
+
+- *What I asked for:* possible causes for criteria 2 and 5, where four of my own emails all landed in `unsure`.
+- *What came back:* three causes at three different stages, not ranked: signal two's word-variety part, signal one's middle (perplexity 45), and where my human line sits. When I leaned towards fixing only signal one, the agent showed me a table: with my combining rule, lowering one signal while the other stays on the AI side creates a disagreement, which scores 0.5, so my emails would stay `unsure` either way.
+- *What I changed:* I kept signal two in my diagnosis, added my own point (I wrote those emails with Gmail's auto-completion, which may make them read more like AI), and chose to lower the score rather than move the human line.
+
+**Moment 4 (Unit 8)**
+
+- *What I asked for:* to raise the AI line to 0.8 as my one improvement.
+- *What came back:* a check against the "before" scores: at 0.80, FP04 (0.8024) would still be labelled AI, while every AI sample stays above 0.81 (the lowest, `ai-5`, is 0.8202).
+- *What I changed:* I chose 0.81 instead.
+
+**Also done by the agent in Unit 8, at my request:** it turned my rule for each attack family into held or broke marks for all 56 attacks, picked seven of the ten log entries at random, filled `scenarios.py` from my criteria's wording, wrote `samples/appeal_check.sh` (its first version had a quoting bug; it fixed the script and reran all three trials), wrote the pattern summary and the "Why 0.81" paragraph from the results, and assembled my answers into the README, marking its own wording. Every verdict, mark rule, diagnosis choice, number and the improvement are mine.
+
 <!-- ═══════════════════════ UNIT 8 — THE TEST ═══════════════════════ -->
 
 ---
@@ -942,12 +956,18 @@ What it cost: five attacks built on AI text (EV03, EV04, EV09, PI03, PI05) dropp
 <!-- For each attack still getting through and each criterion still missed:
      what you'd do, and why you stopped. -->
 
+**MF03** (control characters labelled `human`). What I'd do: refuse nonsense at the route, with a minimum number of words *(the coding agent's fact: at 5 words, MF03 and MF05 are the only attacks it would refuse)*. Why I stopped: Unit 8 allows one change, and raising the AI line "saves more cases": it fixed three broken attacks (FP03, FP04, MF05), the route minimum would have fixed two (MF03, MF05).
+
+**Criteria 2 and 5** (my four emails stuck in `unsure`). *(Drafted by the coding agent from my diagnosis above.)* What I'd do: make both signals read plain, honest emails as human, signal one's predictability and signal two's word-variety part, because with my combining rule fixing one alone only creates a disagreement, and a disagreement scores 0.5. Why I stopped: Unit 8 allows one change, and no single change moves these emails to `human` without moving the human line, which I chose not to do.
+
 
 
 **The trade I'd make if this ran for real:**
 
 <!-- Two sentences. Fewer wrong accusations means more AI text getting through.
      Say which way you'd go and WHO PAYS FOR IT. -->
+
+*(Rewritten into proper wording by the coding agent at my request, from my answers; the ideas are mine.)* If this ran for real, I'd keep the higher line: fewer wrong accusations, and more AI-written or AI-assisted text labelled `unsure` instead of `ai`, because with auto-completion and careful prompting it is often impossible to tell where a text came from. As for who pays, I'm not sure the question still has a clear answer: the boundary between human and AI writing keeps fading, society's view of AI-assisted writing keeps shifting, and what matters to readers is whether a piece is good (proper versus slop), which depends on its audience rather than on who or what wrote it.
 
 
 
