@@ -240,12 +240,17 @@ def submit():
                        creator_id)
 
     # Signal one. Under 3 tokens it raises ValueError: too little to score.
+    # Capstone (student's contract): if GPT-2 can't be loaded, the writer gets a
+    # 503 with the full error text instead of a bare 500, and the failure is
+    # logged as a rejection instead of leaving no trace.
     try:
         model_score = detector.model_signal(text)
     except ValueError:
         return _refuse(400, "text_too_short",
                        "The text is too short to score. Please send at least a few sentences.",
                        creator_id)
+    except detector.DetectorUnavailable as exc:
+        return _refuse(503, "detector_could_not_load", str(exc), creator_id)
 
     # Signal two. It can't raise here: no-word text was rejected above.
     style_score = stylometry.style_signal(text)
