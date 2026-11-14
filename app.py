@@ -153,15 +153,19 @@ def health():
 
 # ── YOU BUILD THIS ────────────────────────────────────────────────────────────
 
-def _refuse(status, error, message, creator_id=None):
+def _refuse(status, error, message, creator_id=None, log_extra=None):
     """
     A request /submit won't score: logged as a rejection (no content_id), then
     answered. A refused request that leaves no trace is an attack you can't see.
+
+    `log_extra` (capstone): a dict of more fields for the log entry only, not
+    the response. A dict, so a field can be called `message` too.
     """
     audit.log_rejection(
         creator_id=creator_id if isinstance(creator_id, str) and creator_id else "unknown",
         reason=error,
         http_status=status,
+        **(log_extra or {}),
     )
     return jsonify({"error": error, "message": message}), status
 
@@ -250,7 +254,15 @@ def submit():
                        "The text is too short to score. Please send at least a few sentences.",
                        creator_id)
     except detector.DetectorUnavailable as exc:
-        return _refuse(503, "detector_could_not_load", str(exc), creator_id)
+        # The entry records the full message, which model, which stage, and
+        # the underlying error's type (student: "Both").
+        return _refuse(503, "detector_could_not_load", str(exc), creator_id,
+                       log_extra={
+                           "message": str(exc),
+                           "model": config.DETECTOR_MODEL,
+                           "error_type": type(exc.__cause__ or exc).__name__,
+                           "failed_at": "model_load",
+                       })
 
     # Signal two. It can't raise here: no-word text was rejected above.
     style_score = stylometry.style_signal(text)
