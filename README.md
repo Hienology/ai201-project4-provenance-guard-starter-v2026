@@ -1007,3 +1007,23 @@ What it cost: five attacks built on AI text (EV03, EV04, EV09, PI03, PI05) dropp
 ---
 
 📖 **How to run this project: [RUNNING.md](RUNNING.md)**
+
+## Capstone
+
+**What This Extends**
+
+*(Assembled by the coding agent from my answers.)* Provenance Guard. What's new: when the model can't be loaded, `/submit` answers with a clear `503` and a JSON error, and the failure leaves an entry in `logs/audit.jsonl`. Until now the writer got Flask's default 500 page and nothing was logged.
+
+**The Shape**
+
+*(Assembled by the coding agent from my answers.)* Shape B, harden against failure. I'm adding one layer, and it covers only the model failing to load (`DetectorUnavailable`, raised in `detector._load`). It sits at the first step of signal one, loading GPT-2: that is the first step that directly needs GPT-2, so that is where it gets loaded. When the load fails:
+
+- the writer gets `503` and `{"error": "detector_could_not_load", "message": "..."}`, where the message is the full error text;
+- the log gets one entry in the same format as a rejection (`status` and `event` `"rejected"`, `reason` `"detector_could_not_load"`, `http_status` `503`), recording the full message, the model name, the stage that failed and the type of the underlying error.
+
+Everything after the load stays as it is: an error while GPT-2 scores the text, while combining and labelling, or while writing the log still gives a bare 500 with no entry.
+
+Out of scope:
+
+- **The four emails stuck in `unsure`** (Unit 8's criteria 2 and 5): they can't be saved "mathematically", so no.
+- **MF03** (control characters labelled `human`), and the minimum word count at the route that would refuse it: *(rewritten by the coding agent at my request)* not built, because I don't have enough time this unit.
