@@ -90,9 +90,10 @@ def perplexity(text: str) -> float:
     but that range shifts with topic and length, which is one reason the raw
     number isn't what you score on.
     """
-    import torch
-
+    # Capstone (student's choice): load first, so a missing torch reaches the
+    # route as DetectorUnavailable from _load, not as a bare ImportError here.
     model, tokenizer = _load()
+    import torch
 
     encoded = tokenizer(
         text,
