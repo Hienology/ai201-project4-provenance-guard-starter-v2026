@@ -24,9 +24,11 @@ Routes:
     GET  /health      is the service up, and is the model loaded
 """
 
+import hashlib
+import time
 import uuid
 
-from flask import Flask, jsonify, request
+from flask import Flask, g, jsonify, request
 
 import audit
 import config
@@ -35,6 +37,37 @@ import scoring
 import stylometry
 
 app = Flask(__name__)
+
+
+# ── Capstone instrumentation (student's decisions, M3) ────────────────────────
+# Every entry gets `input`, `output` and `duration_ms`; the request that loaded
+# GPT-2 also gets `cold: true` (no `cold` field anywhere else).
+
+def _stamp_arrival(wsgi_app):
+    """Note when a request arrives, before the rate limiter sees it (429 timing)."""
+    def wrapped(environ, start_response):
+        environ["capstone.arrived"] = time.perf_counter()
+        return wsgi_app(environ, start_response)
+    return wrapped
+
+
+app.wsgi_app = _stamp_arrival(app.wsgi_app)
+
+
+def _input_of(text):
+    """SHA-256 of the trimmed text plus its word count; None when there's no text."""
+    if not isinstance(text, str) or not text.strip():
+        return None
+    trimmed = text.strip()
+    return {
+        "sha256": hashlib.sha256(trimmed.encode("utf-8")).hexdigest(),
+        "words": len(stylometry.words(trimmed)),
+    }
+
+
+def _ms_since(t0):
+    """Milliseconds since t0 (a time.perf_counter() reading), 3 decimals."""
+    return round((time.perf_counter() - t0) * 1000, 3)
 
 
 # ── Rate limiting — UNIT 8 ────────────────────────────────────────────────────
@@ -106,10 +139,15 @@ if config.RATE_LIMITING_ENABLED:
         payload = request.get_json(silent=True)
         if not isinstance(payload, dict):
             payload = {}
+        # Capstone: timed from arrival (before the limiter) to here.
+        arrived = request.environ.get("capstone.arrived")
         audit.log_rejection(
             creator_id=payload.get("creator_id", "unknown"),
             reason="rate_limited",
             limit=str(exc.description),
+            input=_input_of(payload.get("text")),
+            output={"reason": "rate_limited", "http_status": 429},
+            duration_ms=_ms_since(arrived) if arrived is not None else None,
         )
         return jsonify({
             "error": "rate_limited",
@@ -153,19 +191,28 @@ def health():
 
 # ── YOU BUILD THIS ────────────────────────────────────────────────────────────
 
-def _refuse(status, error, message, creator_id=None, log_extra=None):
+def _refuse(status, error, message, creator_id=None, log_extra=None, text=None, cold=False):
     """
     A request /submit won't score: logged as a rejection (no content_id), then
     answered. A refused request that leaves no trace is an attack you can't see.
 
     `log_extra` (capstone): a dict of more fields for the log entry only, not
     the response. A dict, so a field can be called `message` too.
+    `text`, `cold` (capstone): what came in, and whether this request loaded GPT-2.
     """
+    fields = {
+        "input": _input_of(text),
+        "output": {"reason": error, "http_status": status},
+        "duration_ms": _ms_since(g.t0) if "t0" in g else None,
+    }
+    if cold:
+        fields["cold"] = True
     audit.log_rejection(
         creator_id=creator_id if isinstance(creator_id, str) and creator_id else "unknown",
         reason=error,
         http_status=status,
         **(log_extra or {}),
+        **fields,
     )
     return jsonify({"error": error, "message": message}), status
 
@@ -219,6 +266,9 @@ def submit():
     what should this do when `text` is missing, empty, or enormous? A crash on
     a malformed input is one of the most common real failures there is.
     """
+    # Capstone: `duration_ms` for /submit is the whole request inside this function.
+    g.t0 = time.perf_counter()
+
     # Bad input never reaches a signal, and never gets a content_id. Each refusal
     # is logged as a rejection (unit 8).
     payload = request.get_json(silent=True)
@@ -229,30 +279,35 @@ def submit():
     creator_id = payload.get("creator_id")
     if not isinstance(text, str) or not isinstance(creator_id, str):
         return _refuse(422, "missing_field", "Both text and creator_id are required.",
-                       creator_id)
+                       creator_id, text=text)
     # Leading/trailing whitespace moves signal one's score, so it never gets scored.
     text = text.strip()
     if not text:
-        return _refuse(400, "empty_text", "The text is empty.", creator_id)
+        return _refuse(400, "empty_text", "The text is empty.", creator_id, text=text)
     # Punctuation-only text passes signal one but gives signal two nothing to count.
     n_words = len(stylometry.words(text))
     if n_words == 0:
-        return _refuse(400, "no_words", "The text has no words to score.", creator_id)
+        return _refuse(400, "no_words", "The text has no words to score.", creator_id,
+                       text=text)
     if n_words > config.MAX_WORDS:
         return _refuse(413, "text_too_long",
                        f"The text is too long to score. Please send at most {config.MAX_WORDS} words.",
-                       creator_id)
+                       creator_id, text=text)
 
     # Signal one. Under 3 tokens it raises ValueError: too little to score.
     # Capstone (student's contract): if GPT-2 can't be loaded, the writer gets a
     # 503 with the full error text instead of a bare 500, and the failure is
     # logged as a rejection instead of leaving no trace.
+    # Capstone: `cold` marks the request that loaded GPT-2 (it wasn't loaded
+    # before this call and is after it).
+    was_loaded = detector._model is not None
     try:
         model_score = detector.model_signal(text)
     except ValueError:
         return _refuse(400, "text_too_short",
                        "The text is too short to score. Please send at least a few sentences.",
-                       creator_id)
+                       creator_id, text=text,
+                       cold=not was_loaded and detector._model is not None)
     except detector.DetectorUnavailable as exc:
         # The entry records the full message, which model, which stage, and
         # the underlying error's type (student: "Both").
@@ -262,7 +317,9 @@ def submit():
                            "model": config.DETECTOR_MODEL,
                            "error_type": type(exc.__cause__ or exc).__name__,
                            "failed_at": "model_load",
-                       })
+                       },
+                       text=text)
+    cold = not was_loaded and detector._model is not None
 
     # Signal two. It can't raise here: no-word text was rejected above.
     style_score = stylometry.style_signal(text)
@@ -275,6 +332,13 @@ def submit():
         one_sentence=len(stylometry.sentences(text)) < 2,
     )
 
+    fields = {
+        "input": _input_of(text),
+        "output": {"guess": guess, "label": label},
+        "duration_ms": _ms_since(g.t0),
+    }
+    if cold:
+        fields["cold"] = True
     audit.log_decision(
         content_id=content_id,
         creator_id=creator_id,
@@ -283,6 +347,7 @@ def submit():
         style_score=style_score,
         combined_score=combined_score,
         label=label,
+        **fields,
     )
 
     # confidence = combined_score (AI-likelihood, M1 contract).
@@ -316,13 +381,25 @@ def appeal():
     to the person on the other end. It's the only thing standing between a
     wrong accusation and nothing at all.
     """
+    # Capstone: `duration_ms` for /appeal is the whole request inside this function.
+    t0 = time.perf_counter()
+
+    def refused(status, error, message, creator_id="unknown", reasoning=None):
+        # Capstone: a refused appeal now leaves a rejection-format entry too.
+        audit.log_rejection(
+            creator_id=creator_id,
+            reason=error,
+            http_status=status,
+            input=_input_of(reasoning),
+            output={"reason": error, "http_status": status},
+            duration_ms=_ms_since(t0),
+        )
+        return jsonify({"error": error, "message": message}), status
+
     # Not JSON / missing content_id follow the /submit rules (M1 contract).
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
-        return jsonify({
-            "error": "invalid_json",
-            "message": "The request body must be JSON.",
-        }), 400
+        return refused(400, "invalid_json", "The request body must be JSON.")
 
     content_id = payload.get("content_id")
     # Missing or empty reasoning is allowed (M1 contract).
@@ -330,24 +407,21 @@ def appeal():
     if reasoning is None:
         reasoning = ""
     if not isinstance(content_id, str) or not isinstance(reasoning, str):
-        return jsonify({
-            "error": "missing_field",
-            "message": "A content_id is required, and reasoning, if sent, must be text.",
-        }), 422
+        return refused(422, "missing_field",
+                       "A content_id is required, and reasoning, if sent, must be text.",
+                       reasoning=reasoning)
 
     # Decision entries carry no "event"; appeals and rejections do.
     entries = audit.entries_for(content_id)
     decisions = [e for e in entries if "event" not in e]
     if not decisions:
-        return jsonify({
-            "error": "unknown_content_id",
-            "message": "No decision was found for that content_id.",
-        }), 404
+        return refused(404, "unknown_content_id",
+                       "No decision was found for that content_id.",
+                       reasoning=reasoning)
     if any(e.get("event") == "appeal" for e in entries):
-        return jsonify({
-            "error": "already_appealed",
-            "message": "This decision has already been appealed.",
-        }), 409
+        return refused(409, "already_appealed",
+                       "This decision has already been appealed.",
+                       creator_id=decisions[0]["creator_id"], reasoning=reasoning)
 
     # /appeal isn't sent a creator_id, so it comes from the original decision.
     # The decision line stays as it was; the appeal is appended after it.
@@ -355,6 +429,9 @@ def appeal():
         content_id=content_id,
         creator_id=decisions[0]["creator_id"],
         reasoning=reasoning,
+        input=_input_of(reasoning),
+        output={"status": "under_review", "http_status": 200},
+        duration_ms=_ms_since(t0),
     )
     return jsonify({
         "content_id": content_id,
