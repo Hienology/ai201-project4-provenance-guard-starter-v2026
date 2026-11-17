@@ -1,0 +1,50 @@
+# The capstone run (criteria.md, "Capstone criteria (Unit 9)").
+# One run of this workflow = one trial, on GitHub's Ubuntu, Windows and macOS machines.
+# Start it from the Actions tab (capstone -> Run workflow) or: gh workflow run capstone.yml
+
+name: capstone
+
+on:
+  workflow_dispatch:
+
+jobs:
+  capstone:
+    name: capstone (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup, following RUNNING.md step 1
+        run: |
+          python -m venv .venv
+          if [ -f .venv/Scripts/activate ]; then source .venv/Scripts/activate; else source .venv/bin/activate; fi
+          pip install -r requirements.txt
+          python test.py || true
+          python detector.py
+
+      - name: Capstone run
+        run: |
+          if [ -f .venv/Scripts/activate ]; then source .venv/Scripts/activate; else source .venv/bin/activate; fi
+          python run_capstone.py run
+
+      - name: Attach the result file (backup copy of the run page's last line)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capstone-result-${{ matrix.os }}
+          path: ${{ runner.temp }}/capstone_result_*.json
+          if-no-files-found: ignore
