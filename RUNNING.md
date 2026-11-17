@@ -8,6 +8,100 @@ assumed — the starter ships one that already answers.
 
 ---
 
+## Capstone (Unit 9): from a fresh clone to a first decision
+
+These are the steps the capstone criteria (`criteria.md`, "Capstone criteria")
+follow, by hand on your own machine or automatically on GitHub's machines.
+Python 3.11, 3.12 or 3.13 (not 3.14).
+
+**1. Get the code and set up.**
+
+macOS / Linux:
+
+```bash
+git clone https://github.com/Hienology/ai201-project4-provenance-guard-starter-v2026.git
+cd ai201-project4-provenance-guard-starter-v2026
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python test.py
+python detector.py
+```
+
+Windows (PowerShell):
+
+```powershell
+git clone https://github.com/Hienology/ai201-project4-provenance-guard-starter-v2026.git
+cd ai201-project4-provenance-guard-starter-v2026
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+$env:PYTHONUTF8 = "1"
+python test.py
+python detector.py
+```
+
+- `python test.py` checks your setup. Before `python detector.py` it says
+  `[WARN] Detector model — not downloaded yet`; that's expected.
+- `python detector.py` is **required**: it downloads GPT-2 (about 550 MB) into
+  your user folder's Hugging Face cache and scores a sample. After it, the
+  service's first request loads GPT-2 from disk instead of downloading it.
+- On Windows, `PYTHONUTF8=1` stops the console's older character set from
+  crashing on the checkmarks and dashes these scripts print.
+- On Linux, the torch package from PyPI also brings NVIDIA's GPU libraries, so
+  the install is several GB; that's normal.
+
+**2. Start the service** (it stays running; use a second terminal for requests):
+
+```bash
+python app.py
+```
+
+It listens on `http://127.0.0.1:5000`. To use another port, set `PORT`
+(`PORT=5050 python app.py`; PowerShell: `$env:PORT = "5050"`). On a Mac, port
+5000 can be taken by AirPlay Receiver.
+
+**3. Send the first request** (macOS / Linux; on Windows use `curl.exe` and one line):
+
+```bash
+curl -X POST http://127.0.0.1:5000/submit \
+  -H "Content-Type: application/json" \
+  -d "{\"text\": \"$(cat samples/ai-1.txt)\", \"creator_id\": \"cap-a\"}"
+```
+
+You should get JSON with `content_id`, `guess`, `confidence`, `label`,
+`model_score` and `style_score`, and one new line in `logs/audit.jsonl` with
+the same `content_id`. Every log line now also has `input` (SHA-256 of the
+trimmed text and its word count, or `null`), `output` and `duration_ms`; the
+request that loaded GPT-2 has `cold: true`.
+
+**4. The capstone runs, on GitHub's machines.** The workflow
+`.github/workflows/capstone.yml` does step 1 on Ubuntu, Windows and macOS
+(with `bash` on all three, and `PYTHONUTF8=1`), then `python run_capstone.py run`
+does steps 2 and 3 and the rest of the five criteria. It starts the service
+itself on port 5050 with `AI201_DEBUG=0` (no auto-reloader, so one server
+process). Start it from the
+repo's **Actions** tab → **capstone** → **Run workflow**, or:
+
+```bash
+gh workflow run capstone.yml
+```
+
+One workflow run is one trial. Each machine's output (every request, its
+response, the caller's wait and the new log lines) is on the run's page under
+the step "Capstone run". Then, on your own machine:
+
+```bash
+python run_capstone.py report --label before RUN_ID RUN_ID RUN_ID
+```
+
+writes `results/capstone_run_<stamp>_<label>.md` from the three runs' pages. In
+that file, **cold** times are the caller's clock (from the start of the first
+attempt to the end of the passing one) and **warm** times are each log entry's
+`duration_ms`.
+
+---
+
 ## Before your first class
 
 ```bash
