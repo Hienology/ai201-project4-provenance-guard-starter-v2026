@@ -522,7 +522,12 @@ def cmd_report(args):
             for f in dest.glob("**/capstone_result_*.json"):
                 r = json.loads(f.read_text(encoding="utf-8"))
                 machines.setdefault(r["machine"], r)
-        runs.append({"run_id": run_id, "machines": machines})
+        page = {}
+        for line in text.splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) == 3 and parts[1] == "Capstone run" and "CAPSTONE-RESULT " not in parts[2]:
+                page.setdefault(parts[0], []).append(parts[2])
+        runs.append({"run_id": run_id, "machines": machines, "page": page})
 
     def frac(run, key, per):
         ms = run["machines"]
@@ -554,9 +559,15 @@ def cmd_report(args):
         lines.append(f"| {name} | {target} | {' | '.join(cells)} | |")
     lines += ["", "The Verdict column is blank on purpose: the student writes MET or MISSED.", "",
               "## Real output", "",
-              "Below, per run and per machine, the runner's own summary lines and the machine-readable result, "
-              "copied from each run's page. The full request-by-request output (every response, caller's wait "
-              "and log line) is on the run's page under the step \"Capstone run\".", ""]
+              f"### Run {runs[0]['run_id']}, copied from the run's page (step \"Capstone run\")", "",
+              "Every request, its response, the caller's wait and the new lines of `logs/audit.jsonl`, as "
+              "printed by `run_capstone.py::cmd_run` (Capstone 1 `capstone_1`, 4 `capstone_4`, 5 `capstone_5`, "
+              "3 `capstone_3`, 2 `capstone_2`). The tracebacks under Capstone 5 are the three errors it makes "
+              "happen on purpose.", ""]
+    for job, page_lines in sorted(runs[0]["page"].items()):
+        lines += [f"#### {job}", "```text"] + page_lines + ["```", ""]
+    lines += ["## Machine-readable results, all three runs", "",
+              "The last line of each machine's output (`CAPSTONE-RESULT`), per run.", ""]
     for r in runs:
         lines.append(f"### Run {r['run_id']}")
         for m, res in sorted(r["machines"].items()):
