@@ -1,0 +1,44 @@
+# Capstone M6 evidence, NOT a trial: memory per part of the service (diag_memory.py).
+# Ubuntu twice: with requirements.txt's default torch (the GPU build from PyPI) and
+# with the CPU-only build, to see what the GPU libraries add on Linux.
+# Start it with: gh workflow run capstone-diag.yml
+
+name: capstone-diag
+
+on:
+  workflow_dispatch:
+
+jobs:
+  memory:
+    name: memory (${{ matrix.os }}, torch ${{ matrix.torch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, torch: default}
+          - {os: ubuntu-latest, torch: cpu}
+          - {os: windows-latest, torch: default}
+          - {os: macos-latest, torch: default}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Setup
+        run: |
+          python -m venv .venv
+          if [ -f .venv/Scripts/activate ]; then source .venv/Scripts/activate; else source .venv/bin/activate; fi
+          if [ "${{ matrix.torch }}" = "cpu" ]; then pip install torch --index-url https://download.pytorch.org/whl/cpu; fi
+          pip install -r requirements.txt
+          python detector.py
+      - name: Memory per part
+        run: |
+          if [ -f .venv/Scripts/activate ]; then source .venv/Scripts/activate; else source .venv/bin/activate; fi
+          python diag_memory.py
