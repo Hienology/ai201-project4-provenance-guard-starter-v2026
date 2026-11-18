@@ -2,6 +2,12 @@
 #
 # Supported Python: 3.11, 3.12, or 3.13. NOT 3.14.
 
+# Capstone improvement (student's choice): also look in PyTorch's CPU-only
+# package index. On Linux, PyPI's torch is the GPU build, whose NVIDIA libraries
+# added ~566 MB of memory to a service that never uses a GPU; this index has the
+# CPU build. macOS and Windows already get CPU builds, so nothing changes there.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 # The web service
 flask>=3.0,<4.0
 
