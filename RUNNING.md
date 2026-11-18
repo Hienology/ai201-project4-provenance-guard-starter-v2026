@@ -12,7 +12,9 @@ assumed — the starter ships one that already answers.
 
 These are the steps the capstone criteria (`criteria.md`, "Capstone criteria")
 follow, by hand on your own machine or automatically on GitHub's machines.
-Python 3.11, 3.12 or 3.13 (not 3.14).
+Python 3.11, 3.12 or 3.13 (not 3.14). Check with `python3 --version` (Windows:
+`py --version`). If it says 3.14, use `python3.13` in place of `python3` below
+(on a Mac with Homebrew: `brew install python@3.13`), or `py -3.13` on Windows.
 
 **1. Get the code and set up.**
 
@@ -48,8 +50,11 @@ python detector.py
   service's first request loads GPT-2 from disk instead of downloading it.
 - On Windows, `PYTHONUTF8=1` stops the console's older character set from
   crashing on the checkmarks and dashes these scripts print.
-- On Linux, the torch package from PyPI also brings NVIDIA's GPU libraries, so
-  the install is several GB; that's normal.
+- `requirements.txt` also points pip at PyTorch's CPU-only package index
+  (`--extra-index-url https://download.pytorch.org/whl/cpu`, the capstone
+  improvement). On Linux that installs the CPU build of torch instead of PyPI's
+  GPU build, whose NVIDIA libraries the service never uses. macOS and Windows
+  get the same CPU builds as before.
 
 **2. Start the service** (it stays running; use a second terminal for requests):
 
