@@ -1027,3 +1027,169 @@ Out of scope:
 
 - **The four emails stuck in `unsure`** (Unit 8's criteria 2 and 5): they can't be saved "mathematically", so no.
 - **MF03** (control characters labelled `human`), and the minimum word count at the route that would refuse it: *(rewritten by the coding agent at my request)* not built, because I don't have enough time this unit.
+
+**Running It**
+
+Path B, local with logs, plus GitHub's machines. The service runs from a terminal with `python app.py`; every capstone run uses GitHub Actions (`.github/workflows/capstone.yml`) on Ubuntu, Windows and macOS, started by hand, one run per trial. How to set it up from a fresh clone and run it: [RUNNING.md](RUNNING.md), section "Capstone (Unit 9)".
+
+Clean-clone test, by hand on my Mac (2026-11-17, a fresh clone of the fork at `519dfda`, an empty Hugging Face cache): following those steps word for word, the first `POST /submit` of `samples/ai-1.txt` returned 200 `ai` and wrote one log line with the same `content_id`. One deviation: on a Mac whose `python3` is 3.14, `test.py` fails on the Python version, so `RUNNING.md` now says to check `python3 --version` and use `python3.13` (commit `b6298c3`). GitHub's machines are not affected (the workflow uses Python 3.12).
+
+**Instrumentation**
+
+Every line of `logs/audit.jsonl` now carries, as well as the nine fields from Units 7-8:
+
+| Field | What it holds |
+|---|---|
+| `timestamp` | when the entry was written (UTC, to the second) |
+| `input` | `{"sha256", "words"}`: SHA-256 of the trimmed text (`str.strip()`) and its word count (`stylometry.words`); for appeals, of the `reasoning`; `null` when the request had no text. The text itself is never stored |
+| `output` | what the caller got: `guess` + `label` for a decision; `status` + `http_status` for an accepted appeal; `reason` + `http_status` for every refusal |
+| `duration_ms` | how long the request took inside the service, in ms with 3 decimals: inside `submit` / `appeal`, and for a 429 from arrival (before the rate limiter) |
+| `cold` | `true` only on the request that loaded GPT-2; no `cold` field anywhere else |
+
+A failure entry (`detector_could_not_load`, 503) also records `message`, `model`, `error_type` and `failed_at`. Refused appeals (400, 422, 404, 409) are now logged too.
+
+Eleven real lines from `logs/audit.jsonl` (lines 394-404, the regression check after the logging change, 2026-11-17): a decision that loaded GPT-2 (`cold`), the five bad inputs, a decision, the accepted appeal, the 409, the 404, and a failure entry (503, bad model name):
+
+```json
+{"timestamp": "2026-11-18T00:51:15+00:00", "content_id": "4177c525-ac37-48f2-9d0f-62df9152ebf9", "creator_id": "cap-m6-regress", "guess": "ai", "model_score": 0.8551, "style_score": 1.0, "combined_score": 0.9275, "label": "This is starting to be similar to AI text.", "status": "decided", "input": {"sha256": "8e8f070f04dcac106ea105a3031298632f108fc0bffab45ac1adb7ec5fd72eb5", "words": 164}, "output": {"guess": "ai", "label": "This is starting to be similar to AI text."}, "duration_ms": 2719.863, "cold": true}
+{"timestamp": "2026-11-18T00:51:15+00:00", "content_id": null, "creator_id": "unknown", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "invalid_json", "http_status": 400, "input": null, "output": {"reason": "invalid_json", "http_status": 400}, "duration_ms": 0.005}
+{"timestamp": "2026-11-18T00:51:15+00:00", "content_id": null, "creator_id": "unknown", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "missing_field", "http_status": 422, "input": {"sha256": "b13c52554f42db776b3e656da982aa8e576f53597309b663f2c305044ba17593", "words": 10}, "output": {"reason": "missing_field", "http_status": 422}, "duration_ms": 0.012}
+{"timestamp": "2026-11-18T00:51:15+00:00", "content_id": null, "creator_id": "test-writer-1", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "empty_text", "http_status": 400, "input": null, "output": {"reason": "empty_text", "http_status": 400}, "duration_ms": 0.003}
+{"timestamp": "2026-11-18T00:51:15+00:00", "content_id": null, "creator_id": "test-writer-1", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "text_too_short", "http_status": 400, "input": {"sha256": "3639efcd08abb273b1619e82e78c29a7df02c1051b1820e99fc395dcaa3326b8", "words": 1}, "output": {"reason": "text_too_short", "http_status": 400}, "duration_ms": 0.121}
+{"timestamp": "2026-11-18T00:51:15+00:00", "content_id": null, "creator_id": "test-writer-1", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "text_too_long", "http_status": 413, "input": {"sha256": "472fae591fcdd1b37a2ab966f66f5f8c75e0e095599cecf1cd7d99eef26e774e", "words": 400}, "output": {"reason": "text_too_long", "http_status": 413}, "duration_ms": 0.051}
+{"timestamp": "2026-11-18T00:51:16+00:00", "content_id": "ccba329b-81a0-4e6a-b127-8e96cf588d5e", "creator_id": "appeal-check", "guess": "unsure", "model_score": 0.6019, "style_score": 0.6204, "combined_score": 0.6111, "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI.", "status": "decided", "input": {"sha256": "d32cc1e68f83d98d1fe92f297844d5dae7ef0191410651334336ddde0d9089fa", "words": 153}, "output": {"guess": "unsure", "label": "Not enough convincing evidence for a specific direction like human or AI. How predictable the wording is to a language model: towards AI. How much sentence lengths vary and how many different words are used: towards AI."}, "duration_ms": 58.899}
+{"timestamp": "2026-11-18T00:51:16+00:00", "content_id": "ccba329b-81a0-4e6a-b127-8e96cf588d5e", "creator_id": "appeal-check", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "under_review", "event": "appeal", "reasoning": "I wrote this myself.", "input": {"sha256": "da3ec48b7a7f8e0915fee0a032a004826bacd3e05c9a3916a301e9ffca7a7d1c", "words": 4}, "output": {"status": "under_review", "http_status": 200}, "duration_ms": 0.723}
+{"timestamp": "2026-11-18T00:51:16+00:00", "content_id": null, "creator_id": "appeal-check", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "already_appealed", "http_status": 409, "input": {"sha256": "63b20b566dab38bcad7ce239b9e4e0193eff60470968281b0577391f7a809020", "words": 2}, "output": {"reason": "already_appealed", "http_status": 409}, "duration_ms": 0.656}
+{"timestamp": "2026-11-18T00:51:16+00:00", "content_id": null, "creator_id": "unknown", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "unknown_content_id", "http_status": 404, "input": {"sha256": "df91ca48d8fa30eecb786ffa4401e9a2bbc8a7ca2df52b8a452f2fcb61513070", "words": 4}, "output": {"reason": "unknown_content_id", "http_status": 404}, "duration_ms": 0.631}
+{"timestamp": "2026-11-18T00:51:28+00:00", "content_id": null, "creator_id": "cap-m6-regress-503", "guess": null, "model_score": null, "style_score": null, "combined_score": null, "label": null, "status": "rejected", "event": "rejected", "reason": "detector_could_not_load", "http_status": 503, "message": "Couldn't load 'no-such-model-capstone': no-such-model-capstone is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having permission to this repo either by logging in with `hf auth login` or by passing `token=<your_token>`\nThe first run downloads about 550 MB — check your connection and that you have disk space free.", "model": "no-such-model-capstone", "error_type": "OSError", "failed_at": "model_load", "input": {"sha256": "8e8f070f04dcac106ea105a3031298632f108fc0bffab45ac1adb7ec5fd72eb5", "words": 164}, "output": {"reason": "detector_could_not_load", "http_status": 503}, "duration_ms": 1116.452}
+```
+
+The capstone runs on GitHub wrote 19 such lines per trial for Capstone 3 alone; they are printed in full in `results/capstone_run_2026-11-17_181554_before.md` and `results/capstone_run_2026-11-17_195720_after.md`.
+
+**What It Costs**
+
+*(Assembled by the coding agent from my answers.)* Everything ran on free services (GitHub's standard machines for a public repo, and my own laptop); my only other cost was AI usage, within my plan's limits, with no extra top-up fee. There was no separate ten-run cost run: the numbers are Capstone 4's own measurements in the three after trials (`results/capstone_run_2026-11-17_195720_after.md`), which give more than ten values of each kind of time (27 warm readings, 9 cold) and 9 of memory. Each reading was compared with its target, then the passes were counted against the criterion's rule:
+
+| Measured | How | Readings | Mean | Range | Target | Passes |
+|---|---|---|---|---|---|---|
+| cold start time | the caller's clock, from the first attempt's start to the passing attempt's end | 9 | 5238.1 ms | up to 10141.8 ms | ≤ 45000 ms | 9 of 9 |
+| warm scoring time | each warm entry's `duration_ms` | 27 | 315.3 ms | 142.0 to 476.5 ms | ≤ 5000 ms (2 of 3 per machine) | 27 of 27 |
+| memory held | `psutil` `memory_info().rss` of the `python app.py` process | 9 | 1053.3 MB | 1024.1 to 1083.0 MB | ≤ 900 MB | 0 of 9 |
+| files on disk (one-time) | folder sizes after the clean clone (Mac) | 2 | | venv 1017 MB, GPT-2 551 MB | none set | |
+
+**A hundred a day:** *(Assembled by the coding agent from my answers.)* About 31.5 s of scoring in all (100 × 315.3 ms), which is a good time. On top of that, about 1 GB is held in RAM continuously while the service runs, so that every next request is "warm", and the log grows by about 54 to 69 KB a day (one line of ~540 to 686 bytes per request). Holding 1 GB is no big deal: I suppose every device used has at least 8 GB of RAM; 4 GB is less, but still capable enough to handle all of this plus side jobs on the machine. Everything runs on free services, so it costs $0. (Measured with requests one at a time; 100 arriving at the same moment was not measured.)
+
+**Run Log and Verdicts**
+
+The criteria are in `criteria.md`, "Capstone criteria (Unit 9)", committed in `200ce2a` before any run. Three trials, GitHub Actions runs `44194503556`, `44196618194` and `44196649907`, all on commit `519dfda` with nothing changed in between. Full record: `results/capstone_run_2026-11-17_181554_before.md` (committed in `5274963`), produced by `run_capstone.py::cmd_run` on each machine and assembled by `run_capstone.py::cmd_report` from the runs' pages. The verdicts are mine, by the rule that the target must hold on every trial.
+
+| Criterion | Target | Run 1 | Run 2 | Run 3 | Verdict |
+|---|---|---|---|---|---|
+| Capstone 1. First start on three systems | 3/3 machines | 3/3 | 3/3 | 3/3 | MET |
+| Capstone 2. The model can't load: three causes | 3/3 causes | 3/3 | 3/3 | 3/3 | MET |
+| Capstone 3. Every log entry is complete | 19/19 entries | 19/19 | 19/19 | 19/19 | MET |
+| Capstone 4. Cost and speed on three systems | 3/3 machines | 0/3 | 0/3 | 0/3 | MISSED |
+| Capstone 5. The old behaviour and the boundary hold | 3/3 machines | 3/3 | 3/3 | 3/3 | MET |
+
+Real output from Run 1 (`44194503556`), the summary lines printed by `run_capstone.py::cmd_run` (functions `capstone_1`, `capstone_4`, `capstone_5` on every machine; `capstone_3` and `capstone_2` on macOS), copied from the run's page. Every request, response and log line behind them is in the results file.
+
+```text
+capstone (macos-latest)
+  -> Capstone 1 on this machine: PASS (attempts used: 1; caller's span 9787.47 ms)
+  memory right after the third warm answer: 1008.206 MB (psutil memory_info().rss of pid 1589, 1 MB = 1,000,000 bytes)
+  -> Capstone 4 on this machine: FAIL (cold 9787.47 ms vs 45000; warm at most 5000 ms: 3 of 3; memory 1008.206 MB vs 900)
+  -> Capstone 5 on this machine: PASS (13 of the 13 required; 15 of 15 overall; #11 True, #12 True)
+  -> Capstone 3: PASS (19 of 19 complete)
+  -> Capstone 2: PASS (3 of 3 causes)
+capstone (ubuntu-latest)
+  -> Capstone 1 on this machine: PASS (attempts used: 1; caller's span 4180.309 ms)
+  memory right after the third warm answer: 1625.084 MB (psutil memory_info().rss of pid 2551, 1 MB = 1,000,000 bytes)
+  -> Capstone 4 on this machine: FAIL (cold 4180.309 ms vs 45000; warm at most 5000 ms: 3 of 3; memory 1625.084 MB vs 900)
+  -> Capstone 5 on this machine: PASS (13 of the 13 required; 15 of 15 overall; #11 True, #12 True)
+capstone (windows-latest)
+  -> Capstone 1 on this machine: PASS (attempts used: 1; caller's span 5696.305 ms)
+  memory right after the third warm answer: 1081.684 MB (psutil memory_info().rss of pid 2848, 1 MB = 1,000,000 bytes)
+  -> Capstone 4 on this machine: FAIL (cold 5696.305 ms vs 45000; warm at most 5000 ms: 3 of 3; memory 1081.684 MB vs 900)
+  -> Capstone 5 on this machine: PASS (13 of the 13 required; 15 of 15 overall; #11 True, #12 True)
+```
+
+Capstone 4 in all three trials: cold stayed at most 14037.5 ms (target 45000) and warm at most 700.3 ms (target 5000, 27 of 27 under), so the miss is memory alone (MB, target 900):
+
+| | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| Ubuntu | 1625.1 | 1654.3 | 1653.5 |
+| Windows | 1081.7 | 1046.2 | 1046.0 |
+| macOS | 1008.2 | 1043.1 | 988.2 |
+
+**Diagnosis, Capstone 4** *(Assembled by the coding agent from my answers.)*
+
+- **The miss:** memory was too big in all nine readings, 988.2 to 1654.3 MB against 900 MB, on every machine in every trial; cold and warm stayed inside their targets every time.
+- **Component 1, the model load and scoring in `detector.py`.** Load + first scoring is the largest part of memory on every machine (637 to 711 MB): that is where GPT-2's 497.8 MB of float32 weights (124,439,808 numbers × 4 bytes) become resident, with the tokenizer (~34 MB), the model object (~66 MB) and the scoring's working memory (~60 to 100 MB), which the process keeps once used.
+- **Component 2, the environment of a clean clone, on Ubuntu.** There `pip install -r requirements.txt` installs PyPI's default torch, the GPU build (`2.15.0+cu132`, with 15 `nvidia-…` packages): a big gap against the three CPU builds, since importing it adds 733.1 MB against 269.3 MB for the CPU build on the same machine.
+- **Also a cause:** two parts that vary, the scoring's working-memory changes and how much the system counts as resident; across trials they moved each machine's total by 29 to 55 MB.
+- **Why the target didn't fit:** my 900 MB target budgeted 550 MB for GPT-2, which is the size of the download on disk (`model.safetensors` 548.1 MB plus tokenizer files); the coding agent's description had linked that figure to memory. In memory the GPT-2 part is ~663 to 711 MB.
+
+Evidence: `diag_memory.py`, run on all three systems by `.github/workflows/capstone-diag.yml` (run `44199380448`, evidence, not a trial):
+
+| Stage (MB added) | Ubuntu, default torch | Ubuntu, CPU-only torch | Windows | macOS |
+|---|---|---|---|---|
+| Python + Flask etc. | 44.3 | 44.6 | 44.7 | 48.1 |
+| + `import torch` | +733.1 | +269.3 | +173.8 | +172.0 |
+| + `import transformers` | +201.1 | +98.2 | +97.3 | +107.8 |
+| + GPT-2 load | +209.5 | +209.6 | +90.8 | +101.0 |
+| + first scoring | +427.5 | +428.0 | +572.5 | +610.3 |
+| + three more scorings | +0.0 | +0.0 | +0.9 | +16.6 |
+| **Total** | **1615.5** | **1049.7** | **980.0** | **1055.8** |
+
+**The Improvement**
+
+*(Assembled by the coding agent from my answers.)* One improvement, "make the service's memory fit", aimed at Capstone 4's miss.
+
+**What changed, and why.** One line in `requirements.txt`, `--extra-index-url https://download.pytorch.org/whl/cpu` (commit `c0bed8b`), so `pip` takes PyTorch's CPU-only build. It targets component 2 of the diagnosis: on Ubuntu it replaced PyPI's GPU build with `torch-2.15.0+cpu`; macOS and Windows already had CPU builds. My prediction, written before the re-run: "MISS, I feel the distance is still too big versus 900".
+
+**What was tried first and dropped: bfloat16.** The improvement I first chose added a second change, holding GPT-2's numbers in bfloat16 (2 bytes each), aimed at component 1; my prediction for that plan was "MET, I predict so". Tested on my Mac before any re-run, it more than halved memory (972.0 → 445.9 MB) and changed none of the 12 samples' guesses (`model_score` moved by at most 0.0134), but made each warm scoring about 184× slower (71.4 → 13,130.6 ms), which would have broken Capstone 4's warm target and Capstone 3's one-minute window. So it was dropped and only the CPU-only torch was run.
+
+**The re-run.** Three trials, runs `44211042368`, `44211062395` and `44211083234`, all on commit `b6298c3`, same workflow and format: `results/capstone_run_2026-11-17_195720_after.md` (commit `42061b7`).
+
+| Criterion | Before: Run 1 / 2 / 3 | Verdict | After: Run 1 / 2 / 3 | Verdict |
+|---|---|---|---|---|
+| Capstone 1 | 3/3, 3/3, 3/3 | MET | 3/3, 3/3, 3/3 | MET |
+| Capstone 2 | 3/3, 3/3, 3/3 | MET | 3/3, 3/3, 3/3 | MET |
+| Capstone 3 | 19/19, 19/19, 19/19 | MET | 19/19, 19/19, 19/19 | MET |
+| Capstone 4 | 0/3, 0/3, 0/3 | MISSED | 0/3, 0/3, 0/3 | MISSED |
+| Capstone 5 | 3/3, 3/3, 3/3 | MET | 3/3, 3/3, 3/3 | MET |
+
+Capstone 4's memory (MB), before → after:
+
+| | Before | After |
+|---|---|---|
+| Ubuntu | 1625.1 / 1654.3 / 1653.5 | 1058.9 / 1058.6 / 1042.2 |
+| Windows | 1081.7 / 1046.2 / 1046.0 | 1083.0 / 1045.3 / 1082.4 |
+| macOS | 1008.2 / 1043.1 / 988.2 | 1052.5 / 1032.2 / 1024.1 |
+
+**Did it help?** It was better memory-wise: Ubuntu dropped by 566 to 612 MB, almost exactly what the diagnostic run predicted, with no time cost (after: cold 2.5 to 10.1 s, slowest warm 0.48 s). But it never got below 1000 MB on any machine, so Capstone 4 is still MISSED, as I predicted. The bigger fix, bfloat16, also helped memory, but it made each scoring hundreds of times slower (71.4 → 13,130.6 ms on my Mac), enough to break Capstone 4's warm target and Capstone 3's one-minute window, so it was not run.
+
+**What did it cost?** It cost Claude tokens, but no extra fees, since I'm still within my plan. *(The following are facts the coding agent showed me, which I took as my own.)* On the system side: no change to scores or speed, a smaller install on Ubuntu (no `nvidia-…` packages), and one more package source that `pip` relies on (`download.pytorch.org`).
+
+**What's Still Broken**
+
+*(Assembled by the coding agent from my answers.)*
+
+- **Capstone 4, MISSED** (memory over 900 MB on every machine, before and after the improvement). What I'd do: **(A)** keep GPT-2's weights stored in bfloat16 but compute in float32 one layer at a time, aimed at component 1 (GPT-2's weights in memory), and **(D)** unload GPT-2 after it has been idle for a while. Why I stopped here: I hadn't thought of changing to another data type or format until I saw that changing to bfloat16 improved the memory significantly. (A) is untested, and it would need its own commit and its own three-trial re-run.
+- **The one thing I'd do first:** (D), because it is simpler; then (A), which will take longer because of the trial runs. *(A fact the coding agent showed me: Capstone 4 reads memory while the model is in use, so only (A) could change its verdict; (D) frees the memory between bursts of requests.)*
+- **What was cut:** no stretch items were attempted. The bfloat16 change was dropped before the re-run (see The Improvement). The ten-run cost and the README polish were cut at first, then brought back.
+
+*Known gaps found along the way (facts listed by the coding agent, which I confirmed):*
+
+- Capstone 4's reason for its cold target describes a 550 MB download, but since `RUNNING.md` downloads GPT-2 at setup (`python detector.py`), the cold request only loads it from disk. The criterion stays as committed.
+- `detector._load` has no lock, so requests that overlap before GPT-2 has loaded could each load it. The runner avoids this by waiting for `/health` before a cold retry; the service itself does not.
+- A refused appeal's log entry records the reasoning's hash but not which `content_id` was tried, so a typo and a made-up id look the same in the log.
+- `test.py`'s model check only looks in `~/.cache/huggingface`, so with another `HF_HOME` it can say "already downloaded" when it isn't.
+- Still out of scope, from The Shape: MF03 and the four emails stuck in `unsure`.
+
+**How I Used AI**
+
+*(Drafted by the coding agent from the session log, at my request; I checked that each moment is true.)*
+
+1. **The 550 MB memory budget.** When I set Capstone 4's memory target, I asked how big the memory could get. The agent described GPT-2's weights as "what the ~550 MB download fetches … and loading puts them in memory", so I budgeted 550 MB for GPT-2 plus 350 MB for everything else: 900 MB. All nine readings came back at 988 to 1654 MB. When I asked where 550 came from, the agent traced it to the download's size on disk and said its own description had linked it to memory. What I changed: I kept the committed target (missing it is not a reason to revise it) and put the 550 MB budget into the diagnosis.
+2. **The improvement I first picked.** I chose two changes as one improvement (bfloat16 plus the CPU-only torch) and predicted MET. Before any re-run, the agent tested bfloat16 on my Mac: memory fell from 972 to 446 MB and no guess changed, but each scoring went from 71 ms to 13,131 ms. What I changed: I dropped bfloat16, ran only the CPU-only torch, and predicted MISS; the re-run confirmed it.
